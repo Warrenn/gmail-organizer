@@ -1,0 +1,60 @@
+# =============================================================================
+# CRITICAL: secrets and credentials — NEVER commit these
+# =============================================================================
+
+# OAuth client secret (Google Cloud Console)
+credentials.json
+client_secret*.json
+client_secret*.apps.googleusercontent.com.json
+
+# OAuth refresh token (gives long-lived API access as the user)
+token.json
+token-*.json
+
+# Apps Script local config (contains script ID — not strictly secret but local)
+.clasp.json
+apps-script/.clasp.json
+
+# =============================================================================
+# Personal mailbox data — exported snippets, classifications, sample contents
+# These contain message IDs + sender addresses + subject lines + body snippets
+# from the user's mailbox and should NOT be public
+# =============================================================================
+
+unlabeled_messages.json
+classification.json
+discover.json
+discover-unlabeled*.json
+proposed_tree*.json
+final_tree_v*.json
+
+# Runtime/state files (per-run output, contain counts + message IDs)
+progress.json
+apply_summary.json
+classify_apply_summary.json
+flatten_summary.json
+label_create_summary*.json
+
+# =============================================================================
+# Build/dev environments
+# =============================================================================
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node (clasp dependencies)
+node_modules/
+package-lock.json
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

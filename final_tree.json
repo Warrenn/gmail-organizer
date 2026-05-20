@@ -1,0 +1,69 @@
+{
+  "labels": [
+    "Bills",
+    "Bills/Telkom",
+
+    "Finance",
+    "Finance/ABSA",
+    "Finance/FNB",
+    "Finance/Stripe",
+    "Finance/Wirex",
+
+    "Newsletters",
+    "Newsletters/Coursera",
+    "Newsletters/Flippa",
+    "Newsletters/Japanesepod101",
+    "Newsletters/Medium",
+    "Newsletters/Seekingalpha",
+
+    "Notifications",
+    "Notifications/Apple",
+    "Notifications/Google",
+
+    "Personal",
+    "Personal/Gmail",
+    "Personal/Hotmail",
+
+    "Receipts",
+    "Receipts/Acloud",
+    "Receipts/Jetbrains",
+
+    "Shopping",
+    "Shopping/iStore",
+
+    "Social",
+    "Social/LinkedIn",
+
+    "Work",
+    "Work/Busyweb",
+    "Work/VPM"
+  ],
+  "category_notes": {
+    "Bills": "Recurring/utility invoices: ISP, phone, electricity. Telkom (telkomsa.net) maps here.",
+    "Finance": "Bank statements, payment processors, crypto wallets. FNB + ABSA in ALL CAPS to match existing label style. Stripe + Wirex use title case.",
+    "Newsletters": "Recurring mailing-list / digest content. Sender has List-Unsubscribe header or is a known newsletter platform.",
+    "Notifications": "Event/activity notices: login alerts ('login from...', 'new sign-in'), purchase confirmations ('purchase for $X'), account-access warnings ('someone from X is accessing your account'), trade confirmations ('your trade for $X succeeded'). Distinct from Receipts: notifications are about account/security activity; receipts are commerce documents.",
+    "Personal": "Mail from individual humans, typically via gmail.com / hotmail.com / icloud.com.",
+    "Receipts": "Order confirmations, invoices, payment receipts from commerce. Subject patterns: 'receipt', 'invoice', 'order confirmation', 'your order'.",
+    "Shopping": "E-commerce promotional + order tracking from stores. iStore = Apple Store SA.",
+    "Social": "Notifications from social platforms (LinkedIn, etc.).",
+    "Work": "Work-related senders: VPM team (vpmteam.co.za), Busyweb (busyweb.co.za = own work domain)."
+  },
+  "edits_from_proposal": [
+    "Added new top-level 'Bills' for utility/ISP mail (Telkom).",
+    "Merged Finance/Fnbstatements + Finance/Fnb → Finance/FNB (ALL CAPS).",
+    "Merged Finance/Absa + Finance/Absacapital → Finance/ABSA (ALL CAPS).",
+    "Reassigned Other/Telkomsa → Bills/Telkom.",
+    "Reassigned Other/Wirexapp → Finance/Wirex.",
+    "Reassigned Other/Istore → Shopping/iStore.",
+    "Reassigned Other/Vpmteam → Work/VPM.",
+    "Reassigned Other/Busyweb → Work/Busyweb.",
+    "Dropped 'Other' bucket entirely — unmatched messages stay unlabeled (we'll review at end of Phase 3).",
+    "Dropped Receipts/Telkom — those messages get Bills/Telkom in Phase 3 (and can additionally get Receipts via multi-label).",
+    "Notifications kept at top level; sub-labels remain Apple/Google plus Phase 3 will route transactional patterns here.",
+    "Existing 55 labels left untouched (option A); nested labels are additive."
+  ],
+  "labeling_policy": {
+    "approach": "Adopt nested tree fresh. Existing flat labels (ABSA, FNB, Medium, LinkedIn, Nedbank, Amazon, etc.) are NOT migrated in this session. Phase 3 applies new nested labels to matching messages; old labels keep their existing message set untouched. Migration is a separate session."
+  }
+}
