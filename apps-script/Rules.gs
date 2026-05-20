@@ -127,4 +127,12 @@ const SUBJECT_RULES = [
     query: 'subject:("login from" OR "new sign-in" OR "new sign in" OR "your trade" OR "successful trade" OR "purchase for" OR "someone is accessing" OR "unusual sign-in" OR "security alert")',
     labels: ['Notifications'],
   },
+  {
+    // OTP / one-time-code mail. Comes from hundreds of senders so we match by
+    // subject patterns. Additive — also picks up Notifications via the rule
+    // above for the security-alert variants. The OTP label flags time-sensitive
+    // login codes for quick triage.
+    query: 'subject:("verification code" OR OTP OR "one-time password" OR "one time password" OR "your code" OR "login code" OR "security code" OR "authentication code" OR "passcode" OR "two-factor" OR "2fa code" OR "confirmation code" OR "access code" OR "sign-in code" OR "sign in code")',
+    labels: ['OTP'],
+  },
 ];

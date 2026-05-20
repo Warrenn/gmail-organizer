@@ -122,11 +122,20 @@ function classifyThread_(thread) {
     return ['Buffel', 'Bills'];
   }
 
-  // ============ Auth / verification codes ============
+  // ============ OTP / one-time codes — also flag for quick triage ============
+  if (subjHas('verification code') || subjHas('one-time password') || subjHas('one time password')
+      || subjHas(' otp ') || subjHas('otp:') || subject.trim().toLowerCase().startsWith('otp')
+      || subjHas('your code') || subjHas('login code') || subjHas('security code')
+      || subjHas('authentication code') || subjHas('passcode') || subjHas('two-factor')
+      || subjHas('2fa code') || subjHas('confirmation code') || subjHas('access code')
+      || subjHas('sign-in code') || subjHas('sign in code')) {
+    return ['OTP', 'Notifications'];
+  }
+
+  // ============ Auth / verification (account-level, not OTP code) ============
   if (fromHas('verificationemail') || fromHas('mailer-daemon')
-      || subjHas('verification code') || subjHas('verify your email')
-      || subjHas('confirm your email') || subjHas('two-factor')
-      || subjHas('authentication') || subjHas('login code')) {
+      || subjHas('verify your email') || subjHas('confirm your email')
+      || subjHas('authentication')) {
     return ['Notifications'];
   }
 

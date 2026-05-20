@@ -108,6 +108,7 @@
   },
   "subject_pattern_queries": {
     "Receipts": "subject:(receipt OR invoice OR \"order confirmation\" OR \"your order\" OR \"thank you for your order\" OR \"thank you for your purchase\")",
-    "Notifications": "subject:(\"login from\" OR \"new sign-in\" OR \"new sign in\" OR \"your trade\" OR \"successful trade\" OR \"purchase for\" OR \"someone is accessing\" OR \"unusual sign-in\" OR \"security alert\")"
+    "Notifications": "subject:(\"login from\" OR \"new sign-in\" OR \"new sign in\" OR \"your trade\" OR \"successful trade\" OR \"purchase for\" OR \"someone is accessing\" OR \"unusual sign-in\" OR \"security alert\")",
+    "OTP": "subject:(\"verification code\" OR OTP OR \"one-time password\" OR \"one time password\" OR \"your code\" OR \"login code\" OR \"security code\" OR \"authentication code\" OR \"passcode\" OR \"two-factor\" OR \"2fa code\" OR \"confirmation code\" OR \"access code\" OR \"sign-in code\" OR \"sign in code\")"
   }
 }
