@@ -19,6 +19,15 @@ def create_label(service, name: str) -> dict:
     return service.users().labels().create(userId="me", body=body).execute()
 
 
+def update_label(service, label_id: str, new_name: str) -> dict:
+    body = {"name": new_name}
+    return service.users().labels().patch(userId="me", id=label_id, body=body).execute()
+
+
+def delete_label(service, label_id: str) -> None:
+    service.users().labels().delete(userId="me", id=label_id).execute()
+
+
 def create_missing_labels(service, target_labels: list[str]) -> dict:
     existing = list_existing_label_names(service)
     ordered = sorted(target_labels, key=lambda l: (l.count("/"), l))
