@@ -1,0 +1,718 @@
+# Single source of truth for label-classification logic.
+# Schema documented in docs/rule-spec.md.
+# Apps Script artifacts (apps-script/Rules.gs, apps-script/Classifier.gs)
+# are generated from this file — do not hand-edit them.
+
+version: 1
+
+# ============================================================================
+# sender_rules — Phase 1. First sender rule that matches a thread wins.
+# Mirrors label_queries.json's leaf_label_queries. Restricted to sender
+# operators only so the generator can compile each to a Gmail search query.
+# ============================================================================
+
+sender_rules:
+  # ----- bills -----
+  - id: telkom
+    match: {from_contains_any: [telkomsa.net, telkom.co.za]}
+    labels: [bills, telkom]
+  - id: vodacom-sender
+    match: {from_contains: vodacom.co.za}
+    labels: [bills, vodacom]
+  - id: kingprice-sender
+    match: {from_contains: kingprice.co.za}
+    labels: [bills, kingprice]
+  - id: liberty-sender
+    match: {from_contains: liberty.co.za}
+    labels: [bills, liberty]
+  - id: sars-sender
+    match: {from_contains: sars.gov.za}
+    labels: [bills, sars]
+
+  # ----- finance -----
+  - id: fnb-sender
+    match: {from_contains_any: [fnbstatements.co.za, fnb.co.za]}
+    labels: [finance, fnb]
+  - id: absa-bank-sender
+    match: {from_contains_any: [absa.co.za, absacapital.com]}
+    labels: [finance, absa]
+  - id: stripe-sender
+    match: {from_contains: stripe.com}
+    labels: [finance, stripe]
+  - id: wirex-sender
+    match: {from_contains: wirexapp.com}
+    labels: [finance, wirex]
+  - id: wise-sender
+    match: {from_contains: wise.com}
+    labels: [finance, wise]
+  - id: discovery-sender
+    match: {from_contains: discovery.co.za}
+    labels: [finance, discovery]
+  - id: xm-sender
+    match: {from_contains_any: [xm.com, xmglobal.com]}
+    labels: [finance, xm]
+
+  # ----- newsletters -----
+  - id: medium-sender
+    match: {from_contains: medium.com}
+    labels: [newsletters, medium]
+  - id: seekingalpha-sender
+    match: {from_contains: seekingalpha.com}
+    labels: [newsletters, seekingalpha]
+  - id: flippa-sender
+    match: {from_contains: flippa.com}
+    labels: [newsletters, flippa]
+  - id: coursera-sender
+    match: {from_contains: coursera.org}
+    labels: [newsletters, coursera]
+  - id: japanesepod101-sender
+    match: {from_contains: japanesepod101.com}
+    labels: [newsletters, japanesepod101]
+  - id: mexc-newsletter-sender
+    match: {from_contains_any: [mexc.sg, mexc.com]}
+    labels: [newsletters, mexc]
+  - id: okx-sender
+    match: {from_contains: okx.com}
+    labels: [newsletters, okx]
+  - id: gate-sender
+    match: {from_contains_any: [gate.io, gate.com]}
+    labels: [newsletters, gate]
+  - id: plus500-sender
+    match: {from_contains: plus500.com}
+    labels: [newsletters, plus500]
+  - id: stackshare-sender
+    match: {from_contains: stackshare.io}
+    labels: [newsletters, stackshare]
+  - id: tutorialsdojo-sender
+    match: {from_contains: tutorialsdojo.com}
+    labels: [newsletters, tutorialsdojo]
+  - id: evernote-sender
+    match: {from_contains: evernote.com}
+    labels: [newsletters, evernote]
+  - id: livescribe-sender
+    match: {from_contains: livescribe.com}
+    labels: [newsletters, livescribe]
+  - id: quora-sender
+    match: {from_contains: quora.com}
+    labels: [newsletters, quora]
+  - id: wordpress-sender
+    match: {from_contains: wordpress.com}
+    labels: [newsletters, wordpress]
+  - id: meetup-sender
+    match: {from_contains: meetup.com}
+    labels: [newsletters, meetup]
+  - id: offerzen-sender
+    match: {from_contains: offerzen.com}
+    labels: [newsletters, offerzen]
+  - id: bitget-sender
+    match: {from_contains: bitget.com}
+    labels: [newsletters, bitget]
+  - id: etoro-sender
+    match: {from_contains: etoro.com}
+    labels: [newsletters, etoro]
+  - id: ideabrowser-sender
+    match: {from_contains: ideabrowser.com}
+    labels: [newsletters, ideabrowser]
+  - id: justinwelsh-sender
+    match: {from_contains: justinwelsh.me}
+    labels: [newsletters, justinwelsh]
+  - id: linuxacademy-sender
+    match: {from_contains: linuxacademy.com}
+    labels: [newsletters, linuxacademy]
+  - id: lumosity-sender
+    match: {from_contains: lumosity.com}
+    labels: [newsletters, lumosity]
+  - id: jobleads-sender
+    match: {from_contains: jobleads.com}
+    labels: [newsletters, jobleads]
+  - id: maxmahershow-sender
+    match: {from_contains: maxmahershow.com}
+    labels: [newsletters, maxmahershow]
+  - id: openai-sender
+    match: {from_contains: openai.com}
+    labels: [newsletters, openai]
+  - id: scrimba-sender
+    match: {from_contains: scrimba.com}
+    labels: [newsletters, scrimba]
+  - id: wallmine-sender
+    match: {from_contains: wallmine.com}
+    labels: [newsletters, wallmine]
+  - id: pnet-sender
+    match: {from_contains: pnet.co.za}
+    labels: [newsletters, pnet]
+  - id: tradingview-sender
+    match: {from_contains: tradingview.com}
+    labels: [newsletters, tradingview]
+  - id: xt-sender
+    match: {from_contains: xt.com}
+    labels: [newsletters, xt]
+  - id: kraken-sender
+    match: {from_contains: kraken.com}
+    labels: [newsletters, kraken]
+  - id: ein-itin-sender
+    match: {from_contains: ein-itin.com}
+    labels: [newsletters, ein-itin]
+  - id: juliangoldie-sender
+    match: {from_contains: juliangoldie.com}
+    labels: [newsletters, juliangoldie]
+  - id: patreon-sender
+    match: {from_contains: patreon.com}
+    labels: [newsletters, patreon]
+  - id: cal-sender
+    match: {from_contains: cal.com}
+    labels: [newsletters, cal]
+  - id: discourse-sender
+    match: {from_contains: discoursemail.com}
+    labels: [newsletters, discourse]
+  - id: replit-sender
+    match: {from_contains: replit.com}
+    labels: [newsletters, replit]
+
+  # ----- notifications -----
+  - id: apple-sender
+    match: {from_contains: apple.com}
+    labels: [notifications, apple]
+  - id: google-sender
+    match: {from_contains: google.com}
+    labels: [notifications, google]
+  - id: bybit-sender
+    match: {from_contains: bybit.com}
+    labels: [notifications, bybit]
+  - id: slack-sender
+    match: {from_contains: slack.com}
+    labels: [notifications, slack]
+  - id: youtube-sender
+    match: {from_contains: youtube.com}
+    labels: [notifications, youtube]
+  - id: binance-sender
+    match: {from_contains: binance.com}
+    labels: [notifications, binance]
+  - id: coinex-sender
+    match: {from_contains: coinex.com}
+    labels: [notifications, coinex]
+  - id: mexc-notification-sender
+    match: {from_contains: mexc.link}
+    labels: [notifications, mexc]
+  - id: remote-sender
+    match: {from_contains: remote.com}
+    labels: [notifications, remote]
+  - id: coinbase-sender
+    match: {from_contains: coinbase.com}
+    labels: [notifications, coinbase]
+  - id: cex-sender
+    match: {from_contains: cex.io}
+    labels: [notifications, cex]
+  - id: docusign-sender
+    match: {from_contains: docusign.net}
+    labels: [notifications, docusign]
+  - id: payoneer-sender
+    match: {from_contains: payoneer.com}
+    labels: [notifications, payoneer]
+  - id: luno-sender
+    match: {from_contains: luno.com}
+    labels: [notifications, luno]
+
+  # ----- personal -----
+  - id: gmail-personal-sender
+    match: {from_contains: gmail.com}
+    labels: [personal, gmail]
+  - id: hotmail-personal-sender
+    match: {from_contains: hotmail.com}
+    labels: [personal, hotmail]
+  - id: icloud-personal-sender
+    match: {from_contains: icloud.com}
+    labels: [personal, icloud]
+  - id: yahoo-personal-sender
+    match: {from_contains: yahoo.com}
+    labels: [personal, yahoo]
+
+  # ----- receipts -----
+  - id: acloud-sender
+    match: {from_contains: acloud.guru}
+    labels: [receipts, acloud]
+  - id: jetbrains-sender
+    match: {from_contains: jetbrains.com}
+    labels: [receipts, jetbrains]
+
+  # ----- shopping -----
+  - id: istore-sender
+    match: {from_contains: istore.co.za}
+    labels: [shopping, istore]
+
+  # ----- social -----
+  - id: linkedin-sender
+    match: {from_contains: linkedin.com}
+    labels: [social, linkedin]
+
+  # ----- travel -----
+  - id: booking-sender
+    match: {from_contains: booking.com}
+    labels: [travel, booking]
+
+  # ----- work -----
+  - id: vpm-sender
+    match: {from_contains: vpmteam.co.za}
+    labels: [work, vpm]
+  - id: busyweb-sender
+    match: {from_contains: busyweb.co.za}
+    labels: [work, busyweb]
+  - id: amazon-sender
+    match: {from_contains: amazon.com}
+    labels: [work, aws]
+  - id: github-sender
+    match: {from_contains: github.com}
+    labels: [work, github]
+  - id: notion-sender
+    match: {from_contains: notion.so}
+    labels: [work, notion]
+  - id: pathosethos-sender
+    match: {from_contains: pathosethos.com}
+    labels: [work, pathosethos]
+  - id: relevant-sender
+    match: {from_contains: relevant.us}
+    labels: [work, relevant]
+  - id: surgenly-sender
+    match: {from_contains: surgenly.com}
+    labels: [work, surgenly]
+  - id: trello-sender
+    match: {from_contains: trello.com}
+    labels: [work, trello]
+  - id: verity-sender
+    match: {from_contains: veritybiosciences.com}
+    labels: [work, verity]
+  - id: awsiq-sender
+    match: {from_contains: iq.aws}
+    labels: [work, awsiq]
+  - id: datachef-sender
+    match: {from_contains: datachef.co}
+    labels: [work, datachef]
+  - id: ioco-sender
+    match: {from_contains: ioco.tech}
+    labels: [work, ioco]
+  - id: simola-sender
+    match: {from_contains: simola.co.za}
+    labels: [work, simola]
+
+
+# ============================================================================
+# additive_subject_rules — Phase 2. Layer on top of any phase 1 match.
+# Mirrors label_queries.json's subject_pattern_queries.
+# ============================================================================
+
+additive_subject_rules:
+  - id: subject-receipts
+    match:
+      subject_contains_any:
+        - receipt
+        - invoice
+        - "order confirmation"
+        - "your order"
+        - "thank you for your order"
+        - "thank you for your purchase"
+    labels: [receipts]
+
+  - id: subject-security-notifications
+    match:
+      subject_contains_any:
+        - "login from"
+        - "new sign-in"
+        - "new sign in"
+        - "your trade"
+        - "successful trade"
+        - "purchase for"
+        - "someone is accessing"
+        - "unusual sign-in"
+        - "security alert"
+    labels: [notifications]
+
+  - id: subject-otp
+    match:
+      subject_contains_any:
+        - "verification code"
+        - OTP
+        - "one-time password"
+        - "one time password"
+        - "your code"
+        - "login code"
+        - "security code"
+        - "authentication code"
+        - "passcode"
+        - "two-factor"
+        - "2fa code"
+        - "confirmation code"
+        - "access code"
+        - "sign-in code"
+        - "sign in code"
+    labels: [otp]
+
+
+# ============================================================================
+# fallback_rules — Phase 3. Only fires if neither phase 1 nor phase 2 produced
+# any labels. First match wins within this section.
+# Ported from apps-script/Classifier.gs (the current production classifier).
+# ============================================================================
+
+fallback_rules:
+  # ----- User's own auto-unsubscribe emails -----
+  - id: self-unsubscribe-outbox
+    match:
+      from_contains: warrenn@busyweb.co.za
+      any_of:
+        - {subject_contains: unsubscribe}
+        - {subject_contains: "unsub-"}
+        - {subject_contains: "unsub:"}
+        - {snippet_contains: "automatically generated by gmail"}
+    labels: [busyweb, _Outbox]
+  - id: self-adobe-docs
+    match:
+      from_contains: warrenn@busyweb.co.za
+      any_of:
+        - {from_contains: echosign}
+        - {from_contains: adobe acrobat}
+    labels: [busyweb, notifications]
+  - id: self-absa-work
+    match:
+      from_contains: warrenn@busyweb.co.za
+      any_of:
+        - {from_contains: absa.africa}
+    labels: [work, absa]
+  - id: self-busyweb-bare
+    match:
+      from_contains: warrenn@busyweb.co.za
+    labels: [busyweb]
+
+  # ----- ABSA work colleagues vs bank notifications -----
+  - id: absa-work-colleagues
+    match:
+      from_contains: absa.africa
+      from_not_contains_any: [cardnotification, officialemail]
+    labels: [work, absa]
+  - id: absa-bank-statement
+    match:
+      from_contains_any: [absa.co.za, absacapital, "cardnotification@absa", "officialemail@absa"]
+      subject_contains_any: [statement, "credit card statement"]
+    labels: [absa, finance]
+  - id: absa-bank-other
+    match:
+      from_contains_any: [absa.co.za, absacapital, "cardnotification@absa", "officialemail@absa"]
+    labels: [absa, notifications]
+
+  # ----- Banks / trading platforms -----
+  - id: rmb-bank
+    match: {from_contains_any: [rmbprivatebank, rmb.co.za]}
+    labels: [finance, notifications]
+  - id: etrade
+    match: {from_contains_any: [etradefinancial, "etrade@"]}
+    labels: [finance, notifications]
+  - id: zacks-trade
+    match: {from_contains_any: [clientam.com, zackstrade]}
+    labels: [zacks, finance, notifications]
+  - id: interactive-brokers
+    match: {from_contains: interactivebrokers}
+    labels: [finance, notifications]
+
+  # ----- Crypto / trading -----
+  - id: crypto-newsletters
+    match:
+      from_contains_any:
+        - cryptohopper
+        - coinglass
+        - hotcoin
+        - lunarcrush
+        - airtm
+        - trezor
+        - yieldnodes
+        - crypto.com
+        - dappradar
+    labels: [newsletters, notifications]
+
+  # ----- Insurance / utilities → Bills -----
+  - id: bills-utilities
+    match:
+      from_contains_any:
+        - autogen
+        - autogenlife
+        - "@1life.co.za"
+        - webafrica
+        - unitedworldtelecom
+        - octotel
+        - paycity
+        - paygate
+        - payfast
+        - cipc.co.za
+        - registry.net.za
+        - nextinsurance
+        - insureon
+        - rsync.net
+        - miro.com
+        - eareview.net
+        - brilliant.org
+    labels: [bills, notifications]
+
+  # ----- Medical → Bills -----
+  - id: bills-medical
+    match:
+      from_contains_any:
+        - ampath.co.za
+        - pathcare
+        - mediclinic
+        - blaineassoc
+        - dentaldongray
+        - sedgedentist
+        - drgawie
+        - eidmedic
+        - thehealthpharm
+    labels: [bills, notifications]
+
+  # ----- Tax / government -----
+  - id: delaware-gov
+    match:
+      from_contains_any:
+        - velocitypayment
+        - delaware.gov
+        - delawarefile
+        - e-government
+        - e-governmnt
+        - e-delaware
+    labels: [delaware, bills]
+  - id: tax-filing
+    match:
+      any_of:
+        - {from_contains_any: [its-sars, efile.com, efilemail, turbotax, taxdome, track1099]}
+        - {subject_contains_any: ["tax return", "tax filing"]}
+    labels: [bills, notifications]
+
+  # ----- AWS / Amazon -----
+  - id: aws-iq
+    match:
+      any_of:
+        - {from_contains: "@iq.aws"}
+        - {subject_contains: "aws iq"}
+    labels: [awsiq, work]
+  - id: aws-platform
+    match:
+      from_contains_any:
+        - amazonaws
+        - "@aws.com"
+        - "@aws.amazon"
+        - awsapps.com
+        - "amazon web services"
+        - "aws certification"
+    labels: [aws, notifications]
+
+  # ----- Travel -----
+  - id: travelstart-sender
+    match: {from_contains: travelstart}
+    labels: [travel, newsletters]
+  - id: travel-singaporeair
+    match: {from_contains_any: [singaporeair, "singapore airlines"]}
+    labels: [travel, notifications]
+  - id: travel-booking-agoda
+    match: {from_contains_any: [agoda, bookings.millerandcarter]}
+    labels: [booking, travel]
+  - id: travel-misc-domain
+    match: {from_contains_any: [traveldomain, hepstar]}
+    labels: [travel]
+  - id: nakasendo-trail-mention
+    match:
+      any_of:
+        - {from_contains: thenaturaladventure}
+        - {snippet_contains: nakasendo}
+    labels: [travel, nakasendo-trail]
+  - id: travel-insurance
+    match:
+      any_of:
+        - {from_contains: nextcarehealth}
+        - {snippet_contains: "travel insurance"}
+    labels: [travel, bills]
+  - id: travel-notifications-misc
+    match:
+      from_contains_any: [capenature, flightinfo, sanparks, quicket.com, jsdbiz]
+    labels: [travel, notifications]
+
+  # ----- Property / rental -----
+  - id: seeff-property
+    match: {from_contains_any: [seeff, payprop.com, "@payprop"]}
+    labels: [seef, bills]
+  - id: simola-hoa
+    match: {from_contains_any: [simola, simolahoa]}
+    labels: [simola, personal]
+  - id: buffel-rental
+    match:
+      any_of:
+        - {from_contains_any: [vpmteam, buffel]}
+        - {snippet_contains: buffelspoort}
+    labels: [buffel, bills]
+
+  # ----- OTP / one-time codes (fallback when no sender match) -----
+  - id: otp-fallback
+    match:
+      any_of:
+        - {subject_contains_any: ["verification code", "one-time password", "one time password"]}
+        - {subject_contains_any: [" otp ", "otp:"]}
+        - {subject_starts_with_any: [otp]}
+        - {subject_contains_any: ["your code", "login code", "security code", "authentication code", "passcode", "two-factor", "2fa code", "confirmation code", "access code", "sign-in code", "sign in code"]}
+    labels: [otp, notifications]
+
+  # ----- Auth / verification (account-level, not OTP code) -----
+  - id: auth-verification
+    match:
+      any_of:
+        - {from_contains_any: [verificationemail, mailer-daemon]}
+        - {subject_contains_any: ["verify your email", "confirm your email", "authentication"]}
+    labels: [notifications]
+
+  # ----- Recruiters → Pnet + Newsletters -----
+  - id: recruiters
+    match:
+      any_of:
+        - from_contains_any:
+            - e-merge.co.za
+            - sabenzait.co.za
+            - miprint.co.za
+            - pillango.co.za
+            - esmartgroup.co.za
+            - networkrecruitment.co.za
+            - stand-outstaffing
+            - ringier.co.za
+            - skillzpage.com
+            - jobcrystal.com
+            - ilaunch.co.za
+            - 1-grid.breezy
+            - bberecruitment
+            - pbtgroup.co.za
+            - believeresourcing
+            - millenniumtech.co.za
+            - kmgt.co.za
+            - the-argo.net
+            - scoutit.online
+            - aridconsulting
+            - plusonex.com
+            - attainpeople.co.za
+            - ikbi.co.za
+            - holbourne.co.za
+            - peoplesolved.com
+            - swiftmomentum
+            - goldenrule.co.za
+            - planet10.recruitmail
+            - mspstaffing.co.za
+            - resourgenix.com
+            - perfsys.com
+            - lesedipfs.co.za
+            - remoteok.com
+            - topcv.com
+            - intch.org
+            - "jobs-listings@linkedin"
+            - jobalerts
+        - subject_contains_any: ["remote role", "career opportunit", "cloud architect", "devops engineer"]
+    labels: [pnet, newsletters]
+
+  # ----- Work contacts -----
+  - id: work-domains
+    match:
+      from_contains_any:
+        - sidisglobal
+        - lifelinesneuro
+        - bridgewaybentech
+        - pathosethos
+        - agio.com
+        - wyrick.com
+        - duke.edu
+        - jasonwright.org
+        - ioco.tech
+        - vpmteams.co.za
+        - senterprisys
+        - lightstreetinvestments
+        - softwerk.se
+        - emsbilling.com
+        - hitrust.com
+        - titancharts
+    labels: [work]
+  - id: eoh
+    match: {from_contains: eoh.com}
+    labels: [work]
+  - id: relevant-fallback
+    match: {from_contains: relevant.us}
+    labels: [relevant, work]
+  - id: verity-fallback
+    match: {from_contains: veritybiosciences}
+    labels: [verity, work]
+
+  # ----- Junk / scam patterns -----
+  - id: junk-text-patterns
+    match:
+      text_contains_any:
+        - lhspla.net
+        - elogica.com.br
+        - kobe-u.ne.jp
+        - thepunjabschool
+        - institutxxvolimpiada
+        - serpot-hostel
+        - chengguokeji
+        - femme-africaine
+        - hungariansfx
+        - vxnbill
+        - vxsbill
+        - onlyfans
+        - sexart.com
+        - famesupport
+        - adultprime
+        - vixen.com
+        - "geek squad"
+        - "memory loss and alzheimer"
+        - "doctor warning"
+        - "trump just signed"
+        - "maha docs"
+        - "liberty stock"
+        - profitshouse
+        - ontheluckywave
+        - todayinthemarkets
+        - auratech.info
+        - cageask
+        - "norton™ internet security expired"
+    labels: ["Junk E-mail"]
+  - id: junk-veterans-trauma
+    match:
+      from_contains_any: [supportvtsn, "veterans trauma"]
+    labels: ["Junk E-mail"]
+
+  # ----- Personal contacts via personal email providers -----
+  - id: personal-hotmail
+    match: {from_contains: hotmail.com}
+    labels: [personal, hotmail]
+  - id: personal-yahoo
+    match: {from_contains: yahoo.com}
+    labels: [personal, yahoo]
+  - id: personal-icloud
+    match: {from_contains_any: [icloud.com, "@me.com"]}
+    labels: [personal, icloud]
+  - id: personal-gmail
+    match: {from_contains: "@gmail.com"}
+    labels: [personal, gmail]
+
+  # ----- Generic subject patterns -----
+  - id: subject-shipping
+    match:
+      subject_contains_any: ["tracking notification", shipment, parcel, delivery]
+    labels: [notifications]
+  - id: subject-payment-statement
+    match:
+      subject_contains_any: [payment, invoice, receipt, order, statement]
+    labels: [receipts, bills]
+  - id: subject-jobs
+    match:
+      subject_contains_any: [interview, opportunity, position, application]
+    labels: [pnet, work]
+  - id: subject-welcome-promo
+    match:
+      subject_contains_any: ["welcome to", updates, exciting, "thanks for", review]
+    labels: [newsletters]
+
+  # ----- Last resort -----
+  - id: noreply-notifications
+    match:
+      from_contains_any: [noreply, no-reply, donotreply]
+    labels: [notifications]
+
+  - id: default
+    labels: [newsletters]

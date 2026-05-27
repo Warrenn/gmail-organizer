@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from gmail_cleanup import apply, auth, classify, discover, flatten, labels, propose, rename
+from gmail_cleanup import apply, auth, classify, corpus, discover, flatten, generate, labels, propose, rename, rule_interpreter
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -227,6 +227,53 @@ def cmd_rename_labels(args: argparse.Namespace) -> int:
     return 0 if not summary["errors"] else 2
 
 
+def cmd_corpus_build(args: argparse.Namespace) -> int:
+    service = auth.get_service(Path(args.credentials), Path(args.token))
+    raw = corpus.build_corpus(
+        service,
+        per_label_sample_size=args.per_label,
+        exclude_labels=set(args.exclude or []),
+    )
+    raw_count = len(raw["threads"])
+
+    if args.no_filter:
+        Path(args.output).write_text(json.dumps(raw, indent=2))
+        print(f"corpus (unfiltered): {raw_count} threads → {args.output}")
+        return 0
+
+    spec = rule_interpreter.load_rules(Path(args.rules))
+    filtered, disagreements = corpus.filter_to_agreement(raw, spec)
+    Path(args.output).write_text(json.dumps(filtered, indent=2))
+    print(f"corpus: {len(filtered['threads'])} agreeing threads → {args.output}")
+    print(f"  ({raw_count - len(filtered['threads'])} threads dropped as disagreements)")
+    if args.disagreements_output:
+        Path(args.disagreements_output).write_text(json.dumps({
+            "version": 1,
+            "generated_at": raw["generated_at"],
+            "disagreements": disagreements,
+        }, indent=2))
+        print(f"  disagreements → {args.disagreements_output}")
+    return 0
+
+
+def cmd_generate_apps_script(args: argparse.Namespace) -> int:
+    rules_path = Path(args.rules)
+    output_dir = Path(args.output_dir)
+    if not output_dir.exists():
+        print(f"output dir does not exist: {output_dir}", file=sys.stderr)
+        return 1
+    spec = rule_interpreter.load_rules(rules_path)
+    summary = generate.write_apps_script(spec, output_dir)
+    print(f"wrote {summary['rules_gs']} ({summary['rules_bytes']} bytes)")
+    print(f"wrote {summary['classifier_gs']} ({summary['classifier_bytes']} bytes)")
+    print(
+        f"sender_rules={len(spec['sender_rules'])} "
+        f"additive_subject_rules={len(spec['additive_subject_rules'])} "
+        f"fallback_rules={len(spec['fallback_rules'])}"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gmail_cleanup", description="Gmail mailbox cleanup helper")
     p.add_argument("--credentials", default="credentials.json")
@@ -276,6 +323,20 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--dump", default="unlabeled_messages.json")
     ca.add_argument("--output", default="classify_apply_summary.json")
     ca.set_defaults(func=cmd_classify_apply)
+
+    cb = sub.add_parser("corpus-build", help="Sample stratified threads per user label, filter to interpreter-agreement, write the regression corpus JSON")
+    cb.add_argument("--per-label", type=int, default=5, help="Number of threads to sample per label (default: 5)")
+    cb.add_argument("--exclude", action="append", default=[], help="Additional label name to exclude from sampling (repeatable)")
+    cb.add_argument("--output", default="tests/corpus.json")
+    cb.add_argument("--rules", default="gmail_cleanup/rules.yaml", help="Rules YAML used for the agreement filter")
+    cb.add_argument("--no-filter", action="store_true", help="Skip the interpreter-agreement filter (debug/inspection)")
+    cb.add_argument("--disagreements-output", default="tests/corpus_disagreements.json", help="If set, also dump non-agreeing threads here for refinement work")
+    cb.set_defaults(func=cmd_corpus_build)
+
+    ga = sub.add_parser("generate-apps-script", help="Regenerate apps-script/Rules.gs and Classifier.gs from gmail_cleanup/rules.yaml")
+    ga.add_argument("--rules", default="gmail_cleanup/rules.yaml")
+    ga.add_argument("--output-dir", default="apps-script")
+    ga.set_defaults(func=cmd_generate_apps_script)
 
     rl = sub.add_parser("rename-labels", help="Normalize label names to convention (lowercase, hyphenated, no punctuation)")
     rl.add_argument("--apply", action="store_true", help="Execute the plan (default: dry-run)")
