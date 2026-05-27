@@ -36,6 +36,11 @@ flatten_summary.json
 label_create_summary*.json
 rename_summary.json
 
+# Regression corpus — contains personal mailbox content (subjects + snippets).
+# Rebuild with `python -m gmail_cleanup corpus-build`.
+tests/corpus.json
+tests/corpus_disagreements.json
+
 # =============================================================================
 # Build/dev environments
 # =============================================================================

@@ -270,10 +270,10 @@ walkthrough.
 - [x] Step 4 — port classify_rules.py to spec; thin wrapper — completed 2026-05-27
 - [x] Step 5 — tests for Apps Script generator — completed 2026-05-27
 - [x] Step 6 — implement generator (`generate-apps-script` CLI) — completed 2026-05-27
-- [ ] Step 7 — build regression corpus (`corpus-build` CLI)
-- [ ] Step 8 — corpus regression pytest
-- [ ] Step 9 — property tests
-- [ ] Step 10 — verify + replace hand-written GS with generated
+- [x] Step 7 — build regression corpus (`corpus-build` CLI) — completed 2026-05-27
+- [x] Step 8 — corpus regression pytest — completed 2026-05-27
+- [x] Step 9 — property tests — completed 2026-05-27
+- [x] Step 10 — verify + replace hand-written GS with generated — completed 2026-05-27
 
 ### Phase 1 — The loop
 - [ ] Step 11 — tests for feedback-scan
