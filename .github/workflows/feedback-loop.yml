@@ -31,6 +31,9 @@ jobs:
   # ---------------------------------------------------------------------------
   scan:
     runs-on: ubuntu-latest
+    # Skip until the user has populated repo variable AWS_ROLE_TO_ASSUME
+    # per docs/aws-bootstrap.md. Until then the loop is dormant.
+    if: vars.AWS_ROLE_TO_ASSUME != ''
     outputs:
       has_markers: ${{ steps.scan.outputs.has_markers }}
     steps:

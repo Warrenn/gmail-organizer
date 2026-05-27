@@ -25,6 +25,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Skip until AWS bootstrap is complete. Until then, deploy is manual
+    # via `cd apps-script && clasp push` from the user's machine.
+    if: vars.AWS_ROLE_TO_ASSUME != ''
     steps:
       - uses: actions/checkout@v4
 
