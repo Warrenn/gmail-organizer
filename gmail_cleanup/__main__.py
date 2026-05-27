@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from gmail_cleanup import apply, auth, classify, discover, flatten, labels, propose
+from gmail_cleanup import apply, auth, classify, discover, flatten, labels, propose, rename
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -160,6 +160,73 @@ def cmd_flatten(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rename_labels(args: argparse.Namespace) -> int:
+    service = auth.get_service(Path(args.credentials), Path(args.token))
+    all_labels = flatten.list_all_labels(service)
+    user_labels = [
+        {"id": l["id"], "name": l["name"]}
+        for l in all_labels
+        if l.get("type") == "user"
+    ]
+
+    extra = frozenset(args.exclude or [])
+    plan = rename.plan_renames(user_labels, extra_excludes=extra)
+
+    print("=== rename-labels plan ===")
+    print(f"  renames: {len(plan['renames'])}")
+    print(f"  merges:  {len(plan['merges'])}")
+    print(f"  skipped: {len(plan['skipped'])}")
+
+    if plan["merges"]:
+        print("\nmerges (source label deleted after relabeling its threads onto target):")
+        for m in plan["merges"]:
+            print(f"  {m['source_name']!r}  →  into  {m['target_name']!r}")
+
+    if plan["renames"]:
+        print("\nrenames:")
+        for r in plan["renames"]:
+            print(f"  {r['old_name']:30s}  →  {r['new_name']}")
+
+    by_reason: dict[str, list[str]] = {}
+    for s in plan["skipped"]:
+        by_reason.setdefault(s["reason"], []).append(s["name"])
+    if by_reason:
+        print("\nskipped:")
+        for reason in sorted(by_reason):
+            names = sorted(by_reason[reason])
+            print(f"  {reason} ({len(names)}):")
+            for n in names:
+                print(f"    {n}")
+
+    if not args.apply:
+        print("\n(dry-run; pass --apply to execute)")
+        return 0
+
+    if not plan["renames"] and not plan["merges"]:
+        print("\nnothing to do.")
+        return 0
+
+    if not args.yes:
+        confirm = input("\nProceed with these changes? type 'yes' to confirm: ").strip().lower()
+        if confirm != "yes":
+            print("aborted")
+            return 1
+
+    summary = rename.apply_plan(service, plan)
+    print("\n=== apply summary ===")
+    print(f"  renames applied: {summary['renames_applied']}")
+    print(f"  merges applied:  {summary['merges_applied']}")
+    print(f"  errors:          {len(summary['errors'])}")
+    for e in summary["errors"]:
+        print(f"    ERROR ({e['operation']}): {e}")
+
+    if args.output:
+        Path(args.output).write_text(json.dumps(summary, indent=2))
+        print(f"→ wrote {args.output}")
+
+    return 0 if not summary["errors"] else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gmail_cleanup", description="Gmail mailbox cleanup helper")
     p.add_argument("--credentials", default="credentials.json")
@@ -209,6 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--dump", default="unlabeled_messages.json")
     ca.add_argument("--output", default="classify_apply_summary.json")
     ca.set_defaults(func=cmd_classify_apply)
+
+    rl = sub.add_parser("rename-labels", help="Normalize label names to convention (lowercase, hyphenated, no punctuation)")
+    rl.add_argument("--apply", action="store_true", help="Execute the plan (default: dry-run)")
+    rl.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
+    rl.add_argument("--exclude", action="append", default=[], help="Additional label name to exclude from rename (repeatable)")
+    rl.add_argument("--output", default=None, help="Write apply summary JSON to this path")
+    rl.set_defaults(func=cmd_rename_labels)
 
     return p
 

@@ -34,6 +34,7 @@ apply_summary.json
 classify_apply_summary.json
 flatten_summary.json
 label_create_summary*.json
+rename_summary.json
 
 # =============================================================================
 # Build/dev environments
