@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from gmail_cleanup import apply, auth, classify, corpus, discover, flatten, generate, labels, propose, rename, rule_interpreter
+from gmail_cleanup import apply, auth, classify, cleanup as cleanup_markers, corpus, discover, feedback, flatten, generate, labels, propose, rename, rule_interpreter
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -227,6 +227,33 @@ def cmd_rename_labels(args: argparse.Namespace) -> int:
     return 0 if not summary["errors"] else 2
 
 
+def cmd_cleanup_markers(args: argparse.Namespace) -> int:
+    resolved_path = Path(args.input)
+    if not resolved_path.exists():
+        print(f"no resolved-markers file at {resolved_path}; nothing to do")
+        return 0
+    resolved = json.loads(resolved_path.read_text())
+    if not resolved:
+        print("resolved-markers file is empty; nothing to do")
+        return 0
+    service = auth.get_service(Path(args.credentials), Path(args.token))
+    summary = cleanup_markers.cleanup_resolved_markers(service, resolved)
+    print(json.dumps(summary, indent=2))
+    return 0 if not summary["errors"] else 2
+
+
+def cmd_feedback_scan(args: argparse.Namespace) -> int:
+    service = auth.get_service(Path(args.credentials), Path(args.token))
+    result = feedback.scan_for_markers(service)
+    Path(args.output).write_text(json.dumps(result, indent=2))
+    n_markers = len(result["markers"])
+    n_threads = sum(len(m["threads"]) for m in result["markers"])
+    print(f"feedback: {n_markers} markers, {n_threads} threads → {args.output}")
+    if args.exit_zero_on_empty and n_markers == 0:
+        return 0
+    return 0 if n_markers > 0 else 78  # 78 == EX_CONFIG; signals "no work" to workflow
+
+
 def cmd_corpus_build(args: argparse.Namespace) -> int:
     service = auth.get_service(Path(args.credentials), Path(args.token))
     raw = corpus.build_corpus(
@@ -323,6 +350,15 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--dump", default="unlabeled_messages.json")
     ca.add_argument("--output", default="classify_apply_summary.json")
     ca.set_defaults(func=cmd_classify_apply)
+
+    cm = sub.add_parser("cleanup-markers", help="Apply resolved +X/-X markers from feedback_resolved.json — adds/removes target labels, deletes marker labels")
+    cm.add_argument("--input", default="feedback_resolved.json")
+    cm.set_defaults(func=cmd_cleanup_markers)
+
+    fs = sub.add_parser("feedback-scan", help="Scan Gmail for +X/-X marker labels and dump feedback.json for the autonomous loop")
+    fs.add_argument("--output", default="feedback.json")
+    fs.add_argument("--exit-zero-on-empty", action="store_true", help="Exit 0 (instead of 78) when no markers are found")
+    fs.set_defaults(func=cmd_feedback_scan)
 
     cb = sub.add_parser("corpus-build", help="Sample stratified threads per user label, filter to interpreter-agreement, write the regression corpus JSON")
     cb.add_argument("--per-label", type=int, default=5, help="Number of threads to sample per label (default: 5)")

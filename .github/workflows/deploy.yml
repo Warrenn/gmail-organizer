@@ -1,0 +1,93 @@
+name: deploy
+
+# Deploy regenerated Apps Script artifacts to Google after rule changes
+# merge to main. Triggered only when files that affect Apps Script change.
+#
+# AWS Parameter Store: pulls /cleanup-gmail/clasp-rc-json.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps-script/**"
+      - "gmail_cleanup/rules.yaml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write   # for heartbeat
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Restore ~/.clasprc.json from Parameter Store
+        run: |
+          set -euo pipefail
+          aws ssm get-parameter --name /cleanup-gmail/clasp-rc-json \
+            --with-decryption --query Parameter.Value --output text > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          test -s "$HOME/.clasprc.json"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Set up Python (if rules.yaml changed, regenerate first)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml
+
+      - name: Regenerate Apps Script from rules.yaml
+        # Idempotent — if the generator output matches what's checked in,
+        # this is a no-op. Defensive against rules.yaml drifting from the
+        # checked-in Rules.gs / Classifier.gs.
+        run: |
+          python -m gmail_cleanup generate-apps-script
+
+      - name: clasp push
+        working-directory: apps-script
+        run: |
+          set -euo pipefail
+          clasp push
+
+      - name: Scrub clasp creds
+        if: always()
+        run: |
+          shred -u "$HOME/.clasprc.json" 2>/dev/null || rm -f "$HOME/.clasprc.json"
+
+  heartbeat:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always() && needs.deploy.result == 'failure'
+    steps:
+      - name: File loop-broken issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "deploy run ${{ github.run_id }} failed" \
+            --label loop-broken \
+            --body "Apps Script deploy failed after merge to main.\n\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

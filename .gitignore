@@ -41,6 +41,12 @@ rename_summary.json
 tests/corpus.json
 tests/corpus_disagreements.json
 
+# Loop runtime artifacts — produced by feedback-scan / Claude.
+# (feedback_resolved.json IS committed by Claude during a loop PR — see
+# .github/workflows/cleanup-markers.yml — and consumed post-merge.
+# feedback.json is the upstream artifact, not committed.)
+feedback.json
+
 # =============================================================================
 # Build/dev environments
 # =============================================================================

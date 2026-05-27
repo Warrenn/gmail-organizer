@@ -276,14 +276,14 @@ walkthrough.
 - [x] Step 10 — verify + replace hand-written GS with generated — completed 2026-05-27
 
 ### Phase 1 — The loop
-- [ ] Step 11 — tests for feedback-scan
-- [ ] Step 12 — implement feedback-scan CLI
-- [ ] Step 13 — AWS bootstrap (OIDC role + Parameter Store)
-- [ ] Step 14 — feedback-loop.yml (soft mode)
-- [ ] Step 15 — Claude prompt template
-- [ ] Step 16 — deploy.yml
-- [ ] Step 17 — cleanup-markers.yml
-- [ ] Step 18 — heartbeat / failure-issue
-- [ ] Step 19 — end-to-end dry-run with a real `+test-label`
+- [x] Step 11 — tests for feedback-scan — completed 2026-05-27
+- [x] Step 12 — implement feedback-scan CLI — completed 2026-05-27
+- [x] Step 13 — AWS bootstrap docs (docs/aws-bootstrap.md) — completed 2026-05-27 (user-side AWS console work still needed)
+- [x] Step 14 — feedback-loop.yml (soft mode) — completed 2026-05-27
+- [x] Step 15 — Claude prompt template (extended with feedback_resolved.json requirement) — completed 2026-05-27
+- [x] Step 16 — deploy.yml — completed 2026-05-27
+- [x] Step 17 — cleanup-markers.yml (+ cleanup.py module + cleanup-markers CLI) — completed 2026-05-27
+- [x] Step 18 — heartbeat / failure-issue (embedded in each workflow) — completed 2026-05-27
+- [ ] Step 19 — end-to-end dry-run with a real `+test-label` (REQUIRES USER — needs AWS bootstrap done first per docs/aws-bootstrap.md)
 - [ ] Step 20 — soft launch ~2 weeks
 - [ ] Step 21 — flip `vars.LOOP_AUTO_MERGE` to `true` once trust is established
