@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from gmail_cleanup import apply, auth, classify, discover, flatten, labels, propose, rename
+from gmail_cleanup import apply, auth, classify, discover, flatten, generate, labels, propose, rename, rule_interpreter
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
@@ -227,6 +227,24 @@ def cmd_rename_labels(args: argparse.Namespace) -> int:
     return 0 if not summary["errors"] else 2
 
 
+def cmd_generate_apps_script(args: argparse.Namespace) -> int:
+    rules_path = Path(args.rules)
+    output_dir = Path(args.output_dir)
+    if not output_dir.exists():
+        print(f"output dir does not exist: {output_dir}", file=sys.stderr)
+        return 1
+    spec = rule_interpreter.load_rules(rules_path)
+    summary = generate.write_apps_script(spec, output_dir)
+    print(f"wrote {summary['rules_gs']} ({summary['rules_bytes']} bytes)")
+    print(f"wrote {summary['classifier_gs']} ({summary['classifier_bytes']} bytes)")
+    print(
+        f"sender_rules={len(spec['sender_rules'])} "
+        f"additive_subject_rules={len(spec['additive_subject_rules'])} "
+        f"fallback_rules={len(spec['fallback_rules'])}"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gmail_cleanup", description="Gmail mailbox cleanup helper")
     p.add_argument("--credentials", default="credentials.json")
@@ -276,6 +294,11 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--dump", default="unlabeled_messages.json")
     ca.add_argument("--output", default="classify_apply_summary.json")
     ca.set_defaults(func=cmd_classify_apply)
+
+    ga = sub.add_parser("generate-apps-script", help="Regenerate apps-script/Rules.gs and Classifier.gs from gmail_cleanup/rules.yaml")
+    ga.add_argument("--rules", default="gmail_cleanup/rules.yaml")
+    ga.add_argument("--output-dir", default="apps-script")
+    ga.set_defaults(func=cmd_generate_apps_script)
 
     rl = sub.add_parser("rename-labels", help="Normalize label names to convention (lowercase, hyphenated, no punctuation)")
     rl.add_argument("--apply", action="store_true", help="Execute the plan (default: dry-run)")

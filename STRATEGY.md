@@ -264,12 +264,12 @@ walkthrough.
 ## Progress
 
 ### Phase 0 — Foundation
-- [ ] Step 1 — design content-rule spec (docs/rule-spec.md)
-- [ ] Step 2 — tests for Python rule interpreter
-- [ ] Step 3 — implement Python rule interpreter
-- [ ] Step 4 — port classify_rules.py to spec; thin wrapper
-- [ ] Step 5 — tests for Apps Script generator
-- [ ] Step 6 — implement generator (`generate-apps-script` CLI)
+- [x] Step 1 — design content-rule spec (docs/rule-spec.md) — completed 2026-05-27
+- [x] Step 2 — tests for Python rule interpreter — completed 2026-05-27
+- [x] Step 3 — implement Python rule interpreter — completed 2026-05-27
+- [x] Step 4 — port classify_rules.py to spec; thin wrapper — completed 2026-05-27
+- [x] Step 5 — tests for Apps Script generator — completed 2026-05-27
+- [x] Step 6 — implement generator (`generate-apps-script` CLI) — completed 2026-05-27
 - [ ] Step 7 — build regression corpus (`corpus-build` CLI)
 - [ ] Step 8 — corpus regression pytest
 - [ ] Step 9 — property tests
