@@ -5,134 +5,139 @@
  * nested labels), each former `Parent/Leaf` pair is translated to TWO flat
  * labels (`Parent` and `Leaf`).
  *
+ * Label names follow the project convention: lowercase, hyphenated for
+ * multi-word, no non-alphanumeric characters other than `-` and `_`.
+ * `getOrCreateLabel_` in Code.gs normalizes any drift at runtime, but
+ * keeping the source clean avoids surprises in this file.
+ *
  * To add a new rule, append an object {query, labels}. Queries use Gmail
  * search syntax — test in the Gmail web UI by pasting into the search bar.
  */
 
 const RULES = [
-  // ============ Bills ============
-  { query: 'from:(telkomsa.net OR telkom.co.za)', labels: ['Bills', 'Telkom'] },
-  { query: 'from:vodacom.co.za', labels: ['Bills', 'Vodacom'] },
-  { query: 'from:kingprice.co.za', labels: ['Bills', 'Kingprice'] },
-  { query: 'from:liberty.co.za', labels: ['Bills', 'Liberty'] },
-  { query: 'from:sars.gov.za', labels: ['Bills', 'SARS'] },
+  // ============ bills ============
+  { query: 'from:(telkomsa.net OR telkom.co.za)', labels: ['bills', 'telkom'] },
+  { query: 'from:vodacom.co.za', labels: ['bills', 'vodacom'] },
+  { query: 'from:kingprice.co.za', labels: ['bills', 'kingprice'] },
+  { query: 'from:liberty.co.za', labels: ['bills', 'liberty'] },
+  { query: 'from:sars.gov.za', labels: ['bills', 'sars'] },
 
-  // ============ Finance ============
-  { query: 'from:(fnbstatements.co.za OR fnb.co.za)', labels: ['Finance', 'FNB'] },
-  { query: 'from:(absa.co.za OR absacapital.com)', labels: ['Finance', 'ABSA'] },
-  { query: 'from:stripe.com', labels: ['Finance', 'Stripe'] },
-  { query: 'from:wirexapp.com', labels: ['Finance', 'Wirex'] },
-  { query: 'from:wise.com', labels: ['Finance', 'Wise'] },
-  { query: 'from:discovery.co.za', labels: ['Finance', 'Discovery'] },
-  { query: 'from:(xm.com OR xmglobal.com)', labels: ['Finance', 'XM'] },
+  // ============ finance ============
+  { query: 'from:(fnbstatements.co.za OR fnb.co.za)', labels: ['finance', 'fnb'] },
+  { query: 'from:(absa.co.za OR absacapital.com)', labels: ['finance', 'absa'] },
+  { query: 'from:stripe.com', labels: ['finance', 'stripe'] },
+  { query: 'from:wirexapp.com', labels: ['finance', 'wirex'] },
+  { query: 'from:wise.com', labels: ['finance', 'wise'] },
+  { query: 'from:discovery.co.za', labels: ['finance', 'discovery'] },
+  { query: 'from:(xm.com OR xmglobal.com)', labels: ['finance', 'xm'] },
 
-  // ============ Newsletters ============
-  { query: 'from:medium.com', labels: ['Newsletters', 'medium'] },
-  { query: 'from:seekingalpha.com', labels: ['Newsletters', 'Seekingalpha'] },
-  { query: 'from:flippa.com', labels: ['Newsletters', 'Flippa'] },
-  { query: 'from:coursera.org', labels: ['Newsletters', 'Coursera'] },
-  { query: 'from:japanesepod101.com', labels: ['Newsletters', 'Japanesepod101'] },
-  { query: 'from:(mexc.sg OR mexc.com)', labels: ['Newsletters', 'Mexc'] },
-  { query: 'from:okx.com', labels: ['Newsletters', 'Okx'] },
-  { query: 'from:(gate.io OR gate.com)', labels: ['Newsletters', 'Gate'] },
-  { query: 'from:plus500.com', labels: ['Newsletters', 'Plus500'] },
-  { query: 'from:stackshare.io', labels: ['Newsletters', 'Stackshare'] },
-  { query: 'from:tutorialsdojo.com', labels: ['Newsletters', 'Tutorialsdojo'] },
-  { query: 'from:evernote.com', labels: ['Newsletters', 'Evernote'] },
-  { query: 'from:livescribe.com', labels: ['Newsletters', 'Livescribe'] },
-  { query: 'from:quora.com', labels: ['Newsletters', 'Quora'] },
-  { query: 'from:wordpress.com', labels: ['Newsletters', 'Wordpress'] },
-  { query: 'from:meetup.com', labels: ['Newsletters', 'Meetup'] },
-  { query: 'from:offerzen.com', labels: ['Newsletters', 'Offerzen'] },
-  { query: 'from:bitget.com', labels: ['Newsletters', 'Bitget'] },
-  { query: 'from:etoro.com', labels: ['Newsletters', 'Etoro'] },
-  { query: 'from:ideabrowser.com', labels: ['Newsletters', 'ideabrowser'] },
-  { query: 'from:justinwelsh.me', labels: ['Newsletters', 'Justinwelsh'] },
-  { query: 'from:linuxacademy.com', labels: ['Newsletters', 'Linuxacademy'] },
-  { query: 'from:lumosity.com', labels: ['Newsletters', 'Lumosity'] },
-  { query: 'from:jobleads.com', labels: ['Newsletters', 'Jobleads'] },
-  { query: 'from:maxmahershow.com', labels: ['Newsletters', 'Maxmahershow'] },
-  { query: 'from:openai.com', labels: ['Newsletters', 'Openai'] },
-  { query: 'from:scrimba.com', labels: ['Newsletters', 'Scrimba'] },
-  { query: 'from:wallmine.com', labels: ['Newsletters', 'Wallmine'] },
-  { query: 'from:pnet.co.za', labels: ['Newsletters', 'Pnet'] },
-  { query: 'from:tradingview.com', labels: ['Newsletters', 'Tradingview'] },
-  { query: 'from:xt.com', labels: ['Newsletters', 'Xt'] },
-  { query: 'from:kraken.com', labels: ['Newsletters', 'Kraken'] },
-  { query: 'from:ein-itin.com', labels: ['Newsletters', 'Ein-Itin'] },
-  { query: 'from:juliangoldie.com', labels: ['Newsletters', 'Juliangoldie'] },
-  { query: 'from:patreon.com', labels: ['Newsletters', 'Patreon'] },
-  { query: 'from:cal.com', labels: ['Newsletters', 'Cal'] },
-  { query: 'from:discoursemail.com', labels: ['Newsletters', 'Discourse'] },
-  { query: 'from:replit.com', labels: ['Newsletters', 'Replit'] },
+  // ============ newsletters ============
+  { query: 'from:medium.com', labels: ['newsletters', 'medium'] },
+  { query: 'from:seekingalpha.com', labels: ['newsletters', 'seekingalpha'] },
+  { query: 'from:flippa.com', labels: ['newsletters', 'flippa'] },
+  { query: 'from:coursera.org', labels: ['newsletters', 'coursera'] },
+  { query: 'from:japanesepod101.com', labels: ['newsletters', 'japanesepod101'] },
+  { query: 'from:(mexc.sg OR mexc.com)', labels: ['newsletters', 'mexc'] },
+  { query: 'from:okx.com', labels: ['newsletters', 'okx'] },
+  { query: 'from:(gate.io OR gate.com)', labels: ['newsletters', 'gate'] },
+  { query: 'from:plus500.com', labels: ['newsletters', 'plus500'] },
+  { query: 'from:stackshare.io', labels: ['newsletters', 'stackshare'] },
+  { query: 'from:tutorialsdojo.com', labels: ['newsletters', 'tutorialsdojo'] },
+  { query: 'from:evernote.com', labels: ['newsletters', 'evernote'] },
+  { query: 'from:livescribe.com', labels: ['newsletters', 'livescribe'] },
+  { query: 'from:quora.com', labels: ['newsletters', 'quora'] },
+  { query: 'from:wordpress.com', labels: ['newsletters', 'wordpress'] },
+  { query: 'from:meetup.com', labels: ['newsletters', 'meetup'] },
+  { query: 'from:offerzen.com', labels: ['newsletters', 'offerzen'] },
+  { query: 'from:bitget.com', labels: ['newsletters', 'bitget'] },
+  { query: 'from:etoro.com', labels: ['newsletters', 'etoro'] },
+  { query: 'from:ideabrowser.com', labels: ['newsletters', 'ideabrowser'] },
+  { query: 'from:justinwelsh.me', labels: ['newsletters', 'justinwelsh'] },
+  { query: 'from:linuxacademy.com', labels: ['newsletters', 'linuxacademy'] },
+  { query: 'from:lumosity.com', labels: ['newsletters', 'lumosity'] },
+  { query: 'from:jobleads.com', labels: ['newsletters', 'jobleads'] },
+  { query: 'from:maxmahershow.com', labels: ['newsletters', 'maxmahershow'] },
+  { query: 'from:openai.com', labels: ['newsletters', 'openai'] },
+  { query: 'from:scrimba.com', labels: ['newsletters', 'scrimba'] },
+  { query: 'from:wallmine.com', labels: ['newsletters', 'wallmine'] },
+  { query: 'from:pnet.co.za', labels: ['newsletters', 'pnet'] },
+  { query: 'from:tradingview.com', labels: ['newsletters', 'tradingview'] },
+  { query: 'from:xt.com', labels: ['newsletters', 'xt'] },
+  { query: 'from:kraken.com', labels: ['newsletters', 'kraken'] },
+  { query: 'from:ein-itin.com', labels: ['newsletters', 'ein-itin'] },
+  { query: 'from:juliangoldie.com', labels: ['newsletters', 'juliangoldie'] },
+  { query: 'from:patreon.com', labels: ['newsletters', 'patreon'] },
+  { query: 'from:cal.com', labels: ['newsletters', 'cal'] },
+  { query: 'from:discoursemail.com', labels: ['newsletters', 'discourse'] },
+  { query: 'from:replit.com', labels: ['newsletters', 'replit'] },
 
-  // ============ Notifications ============
-  { query: 'from:apple.com', labels: ['Notifications', 'Apple'] },
-  { query: 'from:google.com', labels: ['Notifications', 'Google'] },
-  { query: 'from:bybit.com', labels: ['Notifications', 'Bybit'] },
-  { query: 'from:slack.com', labels: ['Notifications', 'Slack'] },
-  { query: 'from:youtube.com', labels: ['Notifications', 'Youtube'] },
-  { query: 'from:binance.com', labels: ['Notifications', 'Binance'] },
-  { query: 'from:coinex.com', labels: ['Notifications', 'Coinex'] },
-  { query: 'from:mexc.link', labels: ['Notifications', 'Mexc'] },
-  { query: 'from:remote.com', labels: ['Notifications', 'Remote'] },
-  { query: 'from:coinbase.com', labels: ['Notifications', 'Coinbase'] },
-  { query: 'from:cex.io', labels: ['Notifications', 'Cex'] },
-  { query: 'from:docusign.net', labels: ['Notifications', 'Docusign'] },
-  { query: 'from:payoneer.com', labels: ['Notifications', 'Payoneer'] },
-  { query: 'from:luno.com', labels: ['Notifications', 'Luno'] },
+  // ============ notifications ============
+  { query: 'from:apple.com', labels: ['notifications', 'apple'] },
+  { query: 'from:google.com', labels: ['notifications', 'google'] },
+  { query: 'from:bybit.com', labels: ['notifications', 'bybit'] },
+  { query: 'from:slack.com', labels: ['notifications', 'slack'] },
+  { query: 'from:youtube.com', labels: ['notifications', 'youtube'] },
+  { query: 'from:binance.com', labels: ['notifications', 'binance'] },
+  { query: 'from:coinex.com', labels: ['notifications', 'coinex'] },
+  { query: 'from:mexc.link', labels: ['notifications', 'mexc'] },
+  { query: 'from:remote.com', labels: ['notifications', 'remote'] },
+  { query: 'from:coinbase.com', labels: ['notifications', 'coinbase'] },
+  { query: 'from:cex.io', labels: ['notifications', 'cex'] },
+  { query: 'from:docusign.net', labels: ['notifications', 'docusign'] },
+  { query: 'from:payoneer.com', labels: ['notifications', 'payoneer'] },
+  { query: 'from:luno.com', labels: ['notifications', 'luno'] },
 
-  // ============ Personal ============
-  { query: 'from:gmail.com', labels: ['Personal', 'Gmail'] },
-  { query: 'from:hotmail.com', labels: ['Personal', 'Hotmail'] },
-  { query: 'from:icloud.com', labels: ['Personal', 'iCloud'] },
-  { query: 'from:yahoo.com', labels: ['Personal', 'Yahoo'] },
+  // ============ personal ============
+  { query: 'from:gmail.com', labels: ['personal', 'gmail'] },
+  { query: 'from:hotmail.com', labels: ['personal', 'hotmail'] },
+  { query: 'from:icloud.com', labels: ['personal', 'icloud'] },
+  { query: 'from:yahoo.com', labels: ['personal', 'yahoo'] },
 
-  // ============ Receipts ============
-  { query: 'from:acloud.guru', labels: ['Receipts', 'Acloud'] },
-  { query: 'from:jetbrains.com', labels: ['Receipts', 'Jetbrains'] },
+  // ============ receipts ============
+  { query: 'from:acloud.guru', labels: ['receipts', 'acloud'] },
+  { query: 'from:jetbrains.com', labels: ['receipts', 'jetbrains'] },
 
-  // ============ Shopping ============
-  { query: 'from:istore.co.za', labels: ['Shopping', 'iStore'] },
+  // ============ shopping ============
+  { query: 'from:istore.co.za', labels: ['shopping', 'istore'] },
 
-  // ============ Social ============
-  { query: 'from:linkedin.com', labels: ['Social', 'LinkedIn'] },
+  // ============ social ============
+  { query: 'from:linkedin.com', labels: ['social', 'linkedin'] },
 
-  // ============ Travel ============
-  { query: 'from:booking.com', labels: ['Travel', 'Booking'] },
+  // ============ travel ============
+  { query: 'from:booking.com', labels: ['travel', 'booking'] },
 
-  // ============ Work ============
-  { query: 'from:vpmteam.co.za', labels: ['Work', 'VPM'] },
-  { query: 'from:busyweb.co.za', labels: ['Work', 'Busyweb'] },
-  { query: 'from:amazon.com', labels: ['Work', 'AWS'] },
-  { query: 'from:github.com', labels: ['Work', 'Github'] },
-  { query: 'from:notion.so', labels: ['Work', 'Notion'] },
-  { query: 'from:pathosethos.com', labels: ['Work', 'PathosEthos'] },
-  { query: 'from:relevant.us', labels: ['Work', 'Relevant'] },
-  { query: 'from:surgenly.com', labels: ['Work', 'Surgenly'] },
-  { query: 'from:trello.com', labels: ['Work', 'Trello'] },
-  { query: 'from:veritybiosciences.com', labels: ['Work', 'Verity'] },
-  { query: 'from:iq.aws', labels: ['Work', 'AWSIQ'] },
-  { query: 'from:datachef.co', labels: ['Work', 'Datachef'] },
-  { query: 'from:ioco.tech', labels: ['Work', 'IOCO'] },
-  { query: 'from:simola.co.za', labels: ['Work', 'Simola'] },
+  // ============ work ============
+  { query: 'from:vpmteam.co.za', labels: ['work', 'vpm'] },
+  { query: 'from:busyweb.co.za', labels: ['work', 'busyweb'] },
+  { query: 'from:amazon.com', labels: ['work', 'aws'] },
+  { query: 'from:github.com', labels: ['work', 'github'] },
+  { query: 'from:notion.so', labels: ['work', 'notion'] },
+  { query: 'from:pathosethos.com', labels: ['work', 'pathosethos'] },
+  { query: 'from:relevant.us', labels: ['work', 'relevant'] },
+  { query: 'from:surgenly.com', labels: ['work', 'surgenly'] },
+  { query: 'from:trello.com', labels: ['work', 'trello'] },
+  { query: 'from:veritybiosciences.com', labels: ['work', 'verity'] },
+  { query: 'from:iq.aws', labels: ['work', 'awsiq'] },
+  { query: 'from:datachef.co', labels: ['work', 'datachef'] },
+  { query: 'from:ioco.tech', labels: ['work', 'ioco'] },
+  { query: 'from:simola.co.za', labels: ['work', 'simola'] },
 ];
 
 const SUBJECT_RULES = [
   {
     query: 'subject:(receipt OR invoice OR "order confirmation" OR "your order" OR "thank you for your order" OR "thank you for your purchase")',
-    labels: ['Receipts'],
+    labels: ['receipts'],
   },
   {
     query: 'subject:("login from" OR "new sign-in" OR "new sign in" OR "your trade" OR "successful trade" OR "purchase for" OR "someone is accessing" OR "unusual sign-in" OR "security alert")',
-    labels: ['Notifications'],
+    labels: ['notifications'],
   },
   {
     // OTP / one-time-code mail. Comes from hundreds of senders so we match by
-    // subject patterns. Additive — also picks up Notifications via the rule
-    // above for the security-alert variants. The OTP label flags time-sensitive
+    // subject patterns. Additive — also picks up notifications via the rule
+    // above for the security-alert variants. The otp label flags time-sensitive
     // login codes for quick triage.
     query: 'subject:("verification code" OR OTP OR "one-time password" OR "one time password" OR "your code" OR "login code" OR "security code" OR "authentication code" OR "passcode" OR "two-factor" OR "2fa code" OR "confirmation code" OR "access code" OR "sign-in code" OR "sign in code")',
-    labels: ['OTP'],
+    labels: ['otp'],
   },
 ];
