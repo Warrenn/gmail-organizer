@@ -72,13 +72,15 @@ are in `feedback.json` at the repo root.
 ## Files
 
 ### You will edit
-- `gmail_cleanup/label_queries.json` — sender-based rules (Gmail search query → labels)
 - `gmail_cleanup/rules.yaml` — content/subject-based classifier rules
   (spec syntax documented in `docs/rule-spec.md`). The file begins with
   `version: 1` — do not change the version field unless you are also
   migrating the spec (which would be a separate, larger PR — out of
   scope for this loop).
 - `tests/corpus.json` — regression corpus
+- `apps-script/Rules.gs` and `apps-script/Classifier.gs` — but ONLY by
+  running `python -m gmail_cleanup generate-apps-script`. Never hand-edit.
+- `feedback_resolved.json` — see "Resolved markers manifest" below.
 
 ### You will NEVER hand-edit
 - `apps-script/Rules.gs` and `apps-script/Classifier.gs` are generated.
@@ -127,8 +129,8 @@ gone off-task — stop and BAIL.
 ### Step 1 — Read inputs
 Read:
 - `feedback.json`
-- `gmail_cleanup/label_queries.json`
-- `gmail_cleanup/rules.yaml`
+- `gmail_cleanup/rules.yaml` (the single source of truth — sender,
+  additive-subject, and fallback rules all live here)
 - `tests/corpus.json`
 - `docs/rule-spec.md` (for the spec syntax)
 
@@ -165,9 +167,10 @@ If a marker targets a thread already in the corpus, update only the
 For **`+X`**:
 - If `x` is a new convention label, no separate step needed — the next
   Apps Script run will create it in Gmail when a future match occurs.
-- Add the minimal rule:
-  - Sender-based → append to `label_queries.json`
-  - Content/subject-based → append to `rules.yaml`
+- Add the minimal rule to `gmail_cleanup/rules.yaml`:
+  - Sender-based → add an entry under `sender_rules`
+  - Content/subject-based → add an entry under `additive_subject_rules`
+    or `fallback_rules` as appropriate (see `docs/rule-spec.md`)
 - If `x` already exists, an existing rule almost certainly missed the
   thread. Prefer **adding** a new narrower rule above the existing
   generic one rather than widening the existing rule.
@@ -196,6 +199,32 @@ python -m pytest tests/ -x
   failure. Try a narrower discriminator. If three successive attempts
   for the same marker fail, **BAIL on that marker** but keep the
   successful ones.
+
+### Step 6.5 — Write the resolved-markers manifest
+
+For every marker you successfully resolved (i.e., committed a rule change
+for), append an entry to `feedback_resolved.json` at the repo root. The
+post-merge `cleanup-markers` workflow reads this file to apply the
+Gmail-side cleanup (add/remove target label on source threads, delete
+marker label).
+
+Shape:
+
+```json
+[
+  {
+    "marker_label_id": "<label_id from feedback.json>",
+    "marker_label_name": "<e.g. +receipts>",
+    "sign": "+",
+    "target_label_name": "<e.g. receipts>",
+    "thread_ids": ["<thread_id>", ...]
+  }
+]
+```
+
+Bailed markers MUST NOT appear in this file. Each entry triggers
+irreversible Gmail mutations after merge — only include what you're
+confident about.
 
 ### Step 7 — Commit and open PR
 - The workflow has already created and checked out a branch named
