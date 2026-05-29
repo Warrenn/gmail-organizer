@@ -32,13 +32,39 @@ def _list_user_labels(service) -> list[dict]:
     return [l for l in resp.get("labels", []) if l.get("type") == "user"]
 
 
-def _list_message_ids_for_label(service, label_id: str, max_results: int = 50) -> list[str]:
-    resp = service.users().messages().list(
-        userId="me",
-        labelIds=[label_id],
-        maxResults=max_results,
-    ).execute()
-    return [m["id"] for m in resp.get("messages", [])]
+def _list_message_ids_for_label(service, label_id: str, max_results: int = 200) -> list[str]:
+    """Return up to `max_results` message IDs for the given label.
+
+    This paginates over the Gmail `users.messages.list` API using `nextPageToken`
+    until either `max_results` messages have been collected or there are no more
+    pages to fetch.
+    """
+    message_ids: list[str] = []
+    page_token: str | None = None
+
+    while len(message_ids) < max_results:
+        # Gmail API allows up to 500 per page; respect that and our remaining budget.
+        page_size = min(500, max_results - len(message_ids))
+        resp = (
+            service.users()
+            .messages()
+            .list(
+                userId="me",
+                labelIds=[label_id],
+                maxResults=page_size,
+                pageToken=page_token,
+            )
+            .execute()
+        )
+
+        for m in resp.get("messages", []) or []:
+            message_ids.append(m["id"])
+
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+
+    return message_ids
 
 
 def _get_message(service, message_id: str) -> dict:
