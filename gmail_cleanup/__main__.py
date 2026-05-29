@@ -233,6 +233,9 @@ def cmd_cleanup_markers(args: argparse.Namespace) -> int:
         print(f"no resolved-markers file at {resolved_path}; nothing to do")
         return 0
     resolved = json.loads(resolved_path.read_text())
+    if not isinstance(resolved, list):
+        print(f"{resolved_path} must be a JSON array of resolved markers", file=sys.stderr)
+        return 2
     if not resolved:
         print("resolved-markers file is empty; nothing to do")
         return 0

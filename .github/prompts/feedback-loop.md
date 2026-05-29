@@ -129,8 +129,8 @@ gone off-task — stop and BAIL.
 ### Step 1 — Read inputs
 Read:
 - `feedback.json`
-- `gmail_cleanup/label_queries.json`
-- `gmail_cleanup/rules.yaml`
+- `gmail_cleanup/rules.yaml` (the single source of truth — sender,
+  additive-subject, and fallback rules all live here)
 - `tests/corpus.json`
 - `docs/rule-spec.md` (for the spec syntax)
 
@@ -167,9 +167,10 @@ If a marker targets a thread already in the corpus, update only the
 For **`+X`**:
 - If `x` is a new convention label, no separate step needed — the next
   Apps Script run will create it in Gmail when a future match occurs.
-- Add the minimal rule:
-  - Sender-based → append to `label_queries.json`
-  - Content/subject-based → append to `rules.yaml`
+- Add the minimal rule to `gmail_cleanup/rules.yaml`:
+  - Sender-based → add an entry under `sender_rules`
+  - Content/subject-based → add an entry under `additive_subject_rules`
+    or `fallback_rules` as appropriate (see `docs/rule-spec.md`)
 - If `x` already exists, an existing rule almost certainly missed the
   thread. Prefer **adding** a new narrower rule above the existing
   generic one rather than widening the existing rule.
@@ -208,6 +209,7 @@ Gmail-side cleanup (add/remove target label on source threads, delete
 marker label).
 
 Shape:
+
 ```json
 [
   {

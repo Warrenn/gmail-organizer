@@ -185,6 +185,50 @@ def test_cleanup_multiple_markers():
     assert sorted(service._users._labels.delete_calls) == ["L_minus", "L_plus"]
 
 
+def test_cleanup_minus_marker_does_not_create_missing_target_label():
+    """A `-X` resolution must never create the target label. If `x` doesn't
+    exist there's nothing to remove — only the marker is deleted."""
+    service = _Service(labels={"-newsletters": "L_marker"})  # `newsletters` absent
+    resolved = [{
+        "marker_label_id": "L_marker",
+        "marker_label_name": "-newsletters",
+        "sign": "-",
+        "target_label_name": "newsletters",
+        "thread_ids": ["t1"],
+    }]
+    summary = cleanup.cleanup_resolved_markers(service, resolved)
+
+    # No label was created
+    assert service._users._labels.create_calls == []
+    assert summary["target_labels_created"] == 0
+    # The marker is still deleted
+    assert service._users._labels.delete_calls == ["L_marker"]
+    # The thread was modified but only to strip the marker — no phantom target id
+    call = service._users._threads.modify_calls[0]
+    assert call["body"].get("addLabelIds", []) == []
+    # No None / made-up target id leaked into removeLabelIds
+    assert call["body"]["removeLabelIds"] == ["L_marker"]
+
+
+def test_cleanup_rejects_invalid_sign():
+    """An entry with a sign that is neither '+' nor '-' is rejected: it must
+    not modify any thread or label, and must surface a validate_sign error."""
+    service = _Service(labels={"+receipts": "L_marker", "receipts": "L_target"})
+    resolved = [{
+        "marker_label_id": "L_marker",
+        "marker_label_name": "*weird",
+        "sign": "*",
+        "target_label_name": "receipts",
+        "thread_ids": ["t1"],
+    }]
+    summary = cleanup.cleanup_resolved_markers(service, resolved)
+
+    assert any(e["stage"] == "validate_sign" for e in summary["errors"])
+    assert service._users._threads.modify_calls == []
+    assert service._users._labels.create_calls == []
+    assert service._users._labels.delete_calls == []
+
+
 def test_cleanup_collects_errors_per_marker_does_not_fail_fast():
     """If one marker's cleanup fails, others should still proceed."""
     service = _Service(labels={"+receipts": "L_a", "receipts": "L_r"})

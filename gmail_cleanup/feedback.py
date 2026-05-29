@@ -37,7 +37,8 @@ def _list_message_ids_for_label(service, label_id: str, max_results: int = 200) 
 
     This paginates over the Gmail `users.messages.list` API using `nextPageToken`
     until either `max_results` messages have been collected or there are no more
-    pages to fetch.
+    pages to fetch. A single page is capped at 50, so without pagination a marker
+    sitting on many threads would be silently truncated.
     """
     message_ids: list[str] = []
     page_token: str | None = None

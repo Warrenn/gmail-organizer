@@ -32,24 +32,42 @@ def cleanup_resolved_markers(service, resolved: list[dict]) -> dict:
         target_name = entry["target_label_name"]
         thread_ids = entry.get("thread_ids") or []
 
-        try:
-            target_id, created = _ensure_label_exists(service, target_name, existing)
-            if created:
-                target_labels_created += 1
-        except Exception as e:
+        if sign not in ("+", "-"):
             errors.append({
                 "marker": marker_name,
-                "stage": "ensure_target_label",
-                "error": str(e),
+                "stage": "validate_sign",
+                "error": f"unsupported sign: {sign!r}",
             })
             continue
+
+        # For '+' we ensure the target label exists (creating it if a brand-new
+        # convention label was introduced). For '-' we must NEVER create it —
+        # there is nothing to remove if it doesn't already exist, and creating
+        # it would leave an orphan label behind.
+        if sign == "+":
+            try:
+                target_id, created = _ensure_label_exists(service, target_name, existing)
+                if created:
+                    target_labels_created += 1
+            except Exception as e:
+                errors.append({
+                    "marker": marker_name,
+                    "stage": "ensure_target_label",
+                    "error": str(e),
+                })
+                continue
+        else:  # sign == "-"
+            target_id = existing.get(target_name)  # None if the label is absent
 
         for tid in thread_ids:
             try:
                 if sign == "+":
                     body = {"addLabelIds": [target_id], "removeLabelIds": [marker_id]}
                 else:  # sign == "-"
-                    body = {"addLabelIds": [], "removeLabelIds": [target_id, marker_id]}
+                    # Only strip the target if it actually exists; always strip
+                    # the marker.
+                    remove_ids = [marker_id] if target_id is None else [target_id, marker_id]
+                    body = {"addLabelIds": [], "removeLabelIds": remove_ids}
                 service.users().threads().modify(userId="me", id=tid, body=body).execute()
                 threads_modified += 1
             except Exception as e:

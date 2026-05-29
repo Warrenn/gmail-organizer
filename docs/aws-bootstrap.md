@@ -110,7 +110,7 @@ Substitute `<YOUR_ACCOUNT_ID>` and `<YOUR_REGION>` (e.g. `eu-west-1`).
       "Action": ["kms:Decrypt"],
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
+        "StringLike": {
           "kms:EncryptionContext:PARAMETER_ARN": "arn:aws:ssm:<YOUR_REGION>:<YOUR_ACCOUNT_ID>:parameter/cleanup-gmail/*"
         }
       }
@@ -203,7 +203,7 @@ aws ssm put-parameter \
 
 ## Step 4 — Configure GitHub repo
 
-Two repository variables and zero secrets (everything sensitive lives
+Three repository variables and zero secrets (everything sensitive lives
 in AWS now).
 
 In `Settings → Secrets and variables → Actions → Variables`:
