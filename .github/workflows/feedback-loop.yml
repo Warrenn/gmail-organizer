@@ -108,9 +108,13 @@ jobs:
       branch: ${{ steps.branch.outputs.name }}
       pr_number: ${{ steps.pr.outputs.number }}
     steps:
-      # NOTE: persist-credentials is left enabled (default) — this job legitimately
-      # pushes the refinement branch back to origin.
+      # Containment: do NOT persist a push-capable token in git config. The
+      # claude-code-action step below must run with no ambient write
+      # credentials — the explicit push step at the end authenticates only for
+      # that single push.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
 
       - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4
@@ -169,9 +173,14 @@ jobs:
           # No external network access beyond pip/git/gh.
 
       - name: Push refinement branch
+        # Authenticate only here — credentials were NOT persisted at checkout,
+        # so Claude's step ran without push access. GITHUB_TOKEN is auto-masked.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git push -u origin ${{ steps.branch.outputs.name }}
+          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
+            push -u origin "${{ steps.branch.outputs.name }}"
 
       - name: Open or update PR
         id: pr

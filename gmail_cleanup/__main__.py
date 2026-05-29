@@ -239,6 +239,24 @@ def cmd_cleanup_markers(args: argparse.Namespace) -> int:
     if not resolved:
         print("resolved-markers file is empty; nothing to do")
         return 0
+    # Fail closed before touching Gmail: each entry drives irreversible label
+    # mutations, so a malformed manifest must abort the whole batch rather than
+    # crash partway through.
+    required = ("marker_label_id", "marker_label_name", "sign", "target_label_name")
+    for i, entry in enumerate(resolved):
+        if not isinstance(entry, dict):
+            print(f"{resolved_path}: entry {i} is not an object", file=sys.stderr)
+            return 2
+        missing = [k for k in required if not entry.get(k)]
+        if missing:
+            print(f"{resolved_path}: entry {i} missing/empty key(s): {', '.join(missing)}", file=sys.stderr)
+            return 2
+        if entry["sign"] not in ("+", "-"):
+            print(f"{resolved_path}: entry {i} has invalid sign {entry['sign']!r} (expected '+' or '-')", file=sys.stderr)
+            return 2
+        if "thread_ids" in entry and not isinstance(entry["thread_ids"], list):
+            print(f"{resolved_path}: entry {i} thread_ids must be a list", file=sys.stderr)
+            return 2
     service = auth.get_service(Path(args.credentials), Path(args.token))
     summary = cleanup_markers.cleanup_resolved_markers(service, resolved)
     print(json.dumps(summary, indent=2))

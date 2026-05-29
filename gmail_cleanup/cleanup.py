@@ -41,21 +41,24 @@ def cleanup_resolved_markers(service, resolved: list[dict]) -> dict:
             continue
 
         # For '+' we ensure the target label exists (creating it if a brand-new
-        # convention label was introduced). For '-' we must NEVER create it —
-        # there is nothing to remove if it doesn't already exist, and creating
-        # it would leave an orphan label behind.
+        # convention label was introduced) — but only when there are threads to
+        # apply it to, otherwise we'd leave an orphan label behind. For '-' we
+        # must NEVER create it: there is nothing to remove if it doesn't already
+        # exist, and creating it would also orphan it.
+        target_id = None
         if sign == "+":
-            try:
-                target_id, created = _ensure_label_exists(service, target_name, existing)
-                if created:
-                    target_labels_created += 1
-            except Exception as e:
-                errors.append({
-                    "marker": marker_name,
-                    "stage": "ensure_target_label",
-                    "error": str(e),
-                })
-                continue
+            if thread_ids:
+                try:
+                    target_id, created = _ensure_label_exists(service, target_name, existing)
+                    if created:
+                        target_labels_created += 1
+                except Exception as e:
+                    errors.append({
+                        "marker": marker_name,
+                        "stage": "ensure_target_label",
+                        "error": str(e),
+                    })
+                    continue
         else:  # sign == "-"
             target_id = existing.get(target_name)  # None if the label is absent
 

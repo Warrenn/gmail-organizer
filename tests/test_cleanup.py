@@ -141,7 +141,9 @@ def test_cleanup_creates_target_label_if_missing():
 
 def test_cleanup_skips_marker_with_no_threads():
     """A marker with no threads still has its label deleted (it was placed and
-    never sat on a thread, e.g. a typo), but no thread modifications happen."""
+    never sat on a thread, e.g. a typo), but no thread modifications happen —
+    and crucially no orphan target label is created when there's nothing to
+    apply it to."""
     service = _Service(labels={"+typo": "L_marker"})
     resolved = [{
         "marker_label_id": "L_marker",
@@ -150,10 +152,13 @@ def test_cleanup_skips_marker_with_no_threads():
         "target_label_name": "typo",
         "thread_ids": [],
     }]
-    cleanup.cleanup_resolved_markers(service, resolved)
+    summary = cleanup.cleanup_resolved_markers(service, resolved)
 
     assert service._users._threads.modify_calls == []
     assert service._users._labels.delete_calls == ["L_marker"]
+    # No threads to relabel → no point creating the target label.
+    assert service._users._labels.create_calls == []
+    assert summary["target_labels_created"] == 0
 
 
 def test_cleanup_multiple_markers():
