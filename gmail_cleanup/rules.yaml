@@ -257,7 +257,7 @@ sender_rules:
     match: {from_contains: busyweb.co.za}
     labels: [work, busyweb]
   - id: amazon-sender
-    match: {from_contains: amazon.com}
+    match: {from_contains_any: [aws.amazon.com, amazonaws.com]}
     labels: [work, aws]
   - id: github-sender
     match: {from_contains: github.com}
