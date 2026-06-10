@@ -43,7 +43,11 @@ def _or_group(field: str, items, *, quote_phrases: bool = False) -> str:
 
 
 def _quote_if_phrase(value: str) -> str:
-    return f'"{value}"' if " " in value else value
+    # Quote anything that isn't a plain alphanumeric token. Bare values with a
+    # space, hyphen, dot, etc. are otherwise misparsed by Gmail search — e.g.
+    # `two-factor` reads as `two AND NOT factor` because `-` is the negation
+    # operator. Quoting forces a literal phrase match.
+    return value if value.isalnum() else f'"{value}"'
 
 
 # ---------------------------------------------------------------------------

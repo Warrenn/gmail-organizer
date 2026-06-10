@@ -46,14 +46,26 @@ function organizeInbox() {
       continue;
     }
 
-    const labels = rule.labels.map(getOrCreateLabel_);
+    let labels;
+    try {
+      labels = rule.labels.map(getOrCreateLabel_);
+    } catch (e) {
+      console.warn('[organizeInbox] failed to resolve labels for rule:', rule.query, e);
+      continue;
+    }
+    let applied = 0;
     threads.forEach(thread => {
-      labels.forEach(lbl => lbl.addToThread(thread));
+      try {
+        labels.forEach(lbl => lbl.addToThread(thread));
+        applied += 1;
+      } catch (e) {
+        console.warn('[organizeInbox] failed to label thread for rule:', rule.query, e);
+      }
     });
     rule.labels.forEach(name => {
-      counts[name] = (counts[name] || 0) + threads.length;
+      counts[name] = (counts[name] || 0) + applied;
     });
-    labeledRules += threads.length;
+    labeledRules += applied;
   }
 
   // 2. Subject-pattern rules (Receipts, Notifications) — additive over leaf labels
@@ -74,12 +86,20 @@ function organizeInbox() {
       continue;
     }
 
-    const labels = rule.labels.map(getOrCreateLabel_);
+    let labels;
+    try {
+      labels = rule.labels.map(getOrCreateLabel_);
+    } catch (e) {
+      console.warn('[organizeInbox] failed to resolve subject-rule labels:', rule.query, e);
+      continue;
+    }
     threads.forEach(thread => {
-      labels.forEach(lbl => lbl.addToThread(thread));
-    });
-    rule.labels.forEach(name => {
-      counts[name] = (counts[name] || 0) + threads.length;
+      try {
+        labels.forEach(lbl => lbl.addToThread(thread));
+        rule.labels.forEach(name => { counts[name] = (counts[name] || 0) + 1; });
+      } catch (e) {
+        console.warn('[organizeInbox] failed to apply subject rule to thread:', rule.query, e);
+      }
     });
   }
 
@@ -101,12 +121,16 @@ function organizeInbox() {
       labeledFallback += 1;
       return;
     }
-    labels.forEach(name => {
-      const lbl = getOrCreateLabel_(name);
-      lbl.addToThread(thread);
-      counts[name] = (counts[name] || 0) + 1;
-    });
-    labeledFallback += 1;
+    try {
+      labels.forEach(name => {
+        const lbl = getOrCreateLabel_(name);
+        lbl.addToThread(thread);
+        counts[name] = (counts[name] || 0) + 1;
+      });
+      labeledFallback += 1;
+    } catch (e) {
+      console.warn('[organizeInbox] fallback failed to label thread:', e);
+    }
   });
 
   const elapsedSec = Math.round((Date.now() - start) / 1000);

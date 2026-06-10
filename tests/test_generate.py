@@ -50,6 +50,27 @@ def test_query_subject_contains_any_single_word_no_quotes():
     assert generate.compile_gmail_query({"subject_contains_any": ["receipt"]}) == "subject:receipt"
 
 
+def test_query_subject_contains_any_quotes_hyphenated_token():
+    """A hyphenated token (no space) must be quoted, else Gmail reads the
+    hyphen as a negation operator (e.g. `two-factor` => `two AND NOT factor`)."""
+    assert generate.compile_gmail_query(
+        {"subject_contains_any": ["two-factor"]}
+    ) == 'subject:"two-factor"'
+
+
+def test_query_subject_contains_quotes_hyphenated_token():
+    assert generate.compile_gmail_query(
+        {"subject_contains": "sign-in"}
+    ) == 'subject:"sign-in"'
+
+
+def test_query_subject_contains_any_mixed_quotes_only_special():
+    """Plain alphanumeric tokens stay unquoted; hyphenated/space ones get quoted."""
+    assert generate.compile_gmail_query(
+        {"subject_contains_any": ["otp", "two-factor", "2fa code"]}
+    ) == 'subject:(otp OR "two-factor" OR "2fa code")'
+
+
 # ---------------------------------------------------------------------------
 # compile_js_condition — used for fallback_rules (Classifier.gs)
 # ---------------------------------------------------------------------------

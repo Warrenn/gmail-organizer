@@ -82,7 +82,7 @@ const RULES = [
   { id: 'booking-sender', query: 'from:booking.com', labels: ['travel', 'booking'] },
   { id: 'vpm-sender', query: 'from:vpmteam.co.za', labels: ['work', 'vpm'] },
   { id: 'busyweb-sender', query: 'from:busyweb.co.za', labels: ['work', 'busyweb'] },
-  { id: 'amazon-sender', query: 'from:amazon.com', labels: ['work', 'aws'] },
+  { id: 'amazon-sender', query: 'from:(aws.amazon.com OR amazonaws.com)', labels: ['work', 'aws'] },
   { id: 'github-sender', query: 'from:github.com', labels: ['work', 'github'] },
   { id: 'notion-sender', query: 'from:notion.so', labels: ['work', 'notion'] },
   { id: 'pathosethos-sender', query: 'from:pathosethos.com', labels: ['work', 'pathosethos'] },
@@ -99,5 +99,5 @@ const RULES = [
 const SUBJECT_RULES = [
   { id: 'subject-receipts', query: 'subject:(receipt OR invoice OR "order confirmation" OR "your order" OR "thank you for your order" OR "thank you for your purchase")', labels: ['receipts'] },
   { id: 'subject-security-notifications', query: 'subject:("login from" OR "new sign-in" OR "new sign in" OR "your trade" OR "successful trade" OR "purchase for" OR "someone is accessing" OR "unusual sign-in" OR "security alert")', labels: ['notifications'] },
-  { id: 'subject-otp', query: 'subject:("verification code" OR OTP OR "one-time password" OR "one time password" OR "your code" OR "login code" OR "security code" OR "authentication code" OR passcode OR two-factor OR "2fa code" OR "confirmation code" OR "access code" OR "sign-in code" OR "sign in code")', labels: ['otp'] },
+  { id: 'subject-otp', query: 'subject:("verification code" OR OTP OR "one-time password" OR "one time password" OR "your code" OR "login code" OR "security code" OR "authentication code" OR passcode OR "two-factor" OR "2fa code" OR "confirmation code" OR "access code" OR "sign-in code" OR "sign in code")', labels: ['otp'] },
 ];
