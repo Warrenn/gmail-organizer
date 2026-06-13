@@ -139,6 +139,8 @@ cmd_refine() {
   git checkout -b "$branch" 2>/dev/null || git checkout "$branch"
   BRANCH_NAME="$branch"
   set_output branch "$branch"
+  local base_sha
+  base_sha=$(git rev-parse HEAD)
 
   [ -s "$PROMPT_FILE" ] || die "prompt file not found: $PROMPT_FILE"
   log "Running Claude against $PROMPT_FILE on branch $branch"
@@ -155,6 +157,23 @@ cmd_refine() {
     git commit -m "feedback-loop: rule refinements" >/dev/null
   fi
 
+  # PR body = Claude's commit reasoning for this run (Claude can't open the PR
+  # itself — it has no GitHub creds — so the harness surfaces its rationale).
+  local pr_body
+  pr_body=$(git log "${base_sha}..HEAD" --format='%B' 2>/dev/null)
+  [ -n "$pr_body" ] || pr_body="Autonomous refinement from feedback-loop.sh."
+
+  # A marker is "bailed" when the scan found it but Claude did not resolve it
+  # (it's absent from feedback_resolved.json). Any bail → needs-human.
+  local bailed="false" n_found="0" n_resolved="0"
+  if [ -f "$FEEDBACK_FILE" ]; then
+    n_found=$("$PYTHON" -c "import json;print(len(json.load(open('$FEEDBACK_FILE')).get('markers',[])))" 2>/dev/null || echo 0)
+  fi
+  if [ -f "$RESOLVED_FILE" ]; then
+    n_resolved=$("$PYTHON" -c "import json;print(len(json.load(open('$RESOLVED_FILE'))))" 2>/dev/null || echo 0)
+  fi
+  [ "${n_resolved:-0}" -lt "${n_found:-0}" ] && bailed="true"
+
   guarded push_branch "$branch"
 
   # Open or update the PR.
@@ -162,21 +181,29 @@ cmd_refine() {
   existing=$(gh pr list --head "$branch" --json number -q '.[0].number' 2>/dev/null || echo "")
   if [ -z "$existing" ]; then
     if [ "$DRY_RUN" = "true" ]; then
-      log "[dry-run] gh pr create --head $branch --label loop-autonomous"
+      log "[dry-run] gh pr create --head $branch --label loop-autonomous (bailed=$bailed)"
       PR_NUMBER="dry-run"
     else
       local url
       url=$(gh pr create \
         --title "feedback-loop: $(date -u +%Y-%m-%d) refinement" \
-        --body "Autonomous refinement from \`feedback-loop.sh\`. See commits for per-marker reasoning. Triage: corpus regression + property tests are CI-gated." \
+        --body "$pr_body" \
         --label loop-autonomous)
       PR_NUMBER="${url##*/}"
     fi
   else
     PR_NUMBER="$existing"
   fi
+
+  # Flag bailed runs for a human (resolved < found). Create the label if absent.
+  if [ "$bailed" = "true" ] && [ "$DRY_RUN" != "true" ] && [ -n "$PR_NUMBER" ]; then
+    gh label create needs-human --color FBCA04 --description "Loop bailed on a marker; needs a human decision" 2>/dev/null || true
+    gh pr edit "$PR_NUMBER" --add-label needs-human
+    log "marked PR #$PR_NUMBER needs-human ($n_resolved/$n_found markers resolved)"
+  fi
+
   set_output pr_number "$PR_NUMBER"
-  log "pr_number=$PR_NUMBER"
+  log "pr_number=$PR_NUMBER bailed=$bailed"
 }
 
 cmd_verify() {
