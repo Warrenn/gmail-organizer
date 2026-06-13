@@ -710,8 +710,12 @@ fallback_rules:
 
   # ----- Last resort -----
   - id: noreply-notifications
+    # Anthropic sends transactional sign-in / magic-link mail from
+    # no-reply@mail.anthropic.com; the user flagged these as NOT notifications
+    # (-notifications marker), so exclude the domain from this catch-all.
     match:
       from_contains_any: [noreply, no-reply, donotreply]
+      from_not_contains_any: [anthropic.com]
     labels: [notifications]
 
   - id: default

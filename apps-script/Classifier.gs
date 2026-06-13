@@ -160,7 +160,7 @@ function classifyThread_(thread) {
   if ((subjHas('welcome to') || subjHas('updates') || subjHas('exciting') || subjHas('thanks for') || subjHas('review'))) return ['newsletters'];
 
   // noreply-notifications
-  if ((fromHas('noreply') || fromHas('no-reply') || fromHas('donotreply'))) return ['notifications'];
+  if ((fromHas('noreply') || fromHas('no-reply') || fromHas('donotreply')) && (!fromHas('anthropic.com'))) return ['notifications'];
 
   return ['newsletters'];  // default
 
