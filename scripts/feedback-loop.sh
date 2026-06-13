@@ -106,7 +106,10 @@ cmd_scan() {
 }
 
 cmd_refine() {
-  # Anthropic key ONLY — no Gmail creds in this phase's environment.
+  # Anthropic key ONLY — no Gmail creds in this phase's environment. Drop the
+  # key when this function returns so it cannot linger into a later in-process
+  # phase during `all`.
+  trap 'unset ANTHROPIC_API_KEY' RETURN
   local key
   key=$(ssm "$SSM_PREFIX/anthropic-api-key")
   mask "$key"

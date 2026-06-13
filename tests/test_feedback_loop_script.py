@@ -83,6 +83,8 @@ def _run(subcmd, *, cwd, stub, env=None):
     full_env["PATH"] = f"{stub['bindir']}{os.pathsep}{full_env['PATH']}"
     full_env["GH_LOG"] = str(stub["gh_log"])
     full_env["CLAUDE_MARKER"] = str(stub["claude_marker"])
+    # Isolate Actions-only env: only tests that pass it explicitly get it.
+    full_env.pop("GITHUB_OUTPUT", None)
     full_env.setdefault("DRY_RUN", "true")
     if env:
         full_env.update(env)
@@ -201,6 +203,42 @@ def test_scan_reports_no_markers(tmp_path, stub_bin):
              env={"FIXTURE_MARKERS": "0", "GITHUB_OUTPUT": str(gh_out)})
     assert r.returncode == 0, r.stderr
     assert "has_markers=false" in gh_out.read_text()
+
+
+def test_scan_without_github_output_is_a_clean_noop(tmp_path, stub_bin):
+    # Local runs have no $GITHUB_OUTPUT — set_output must no-op, not crash.
+    work = tmp_path / "work"
+    work.mkdir()
+    r = _run("scan", cwd=work, stub=stub_bin, env={"FIXTURE_MARKERS": "1"})
+    assert r.returncode == 0, r.stderr
+    assert "markers=1" in (r.stdout + r.stderr)
+
+
+# --------------------------------------------------------------------------
+# refine — runs claude when invoked (needs a git repo)
+# --------------------------------------------------------------------------
+def test_refine_runs_claude_and_guards_push(git_repo, stub_bin):
+    prompt = git_repo / "prompt.md"
+    prompt.write_text("do the refinement\n")
+    r = _run("refine", cwd=git_repo, stub=stub_bin, env={"PROMPT_FILE": str(prompt)})
+    assert r.returncode == 0, r.stderr
+    assert stub_bin["claude_marker"].exists(), "refine must invoke the claude CLI"
+    gh_calls = stub_bin["gh_log"].read_text() if stub_bin["gh_log"].exists() else ""
+    # under DRY_RUN the push and pr create are logged, never executed
+    assert "[dry-run]" in (r.stdout + r.stderr)
+    assert "pr create" not in gh_calls
+
+
+# --------------------------------------------------------------------------
+# heartbeat — files a loop-broken issue
+# --------------------------------------------------------------------------
+def test_heartbeat_files_issue_when_not_dry(tmp_path, stub_bin):
+    work = tmp_path / "work"
+    work.mkdir()
+    r = _run("heartbeat", cwd=work, stub=stub_bin,
+             env={"DRY_RUN": "false", "SCAN_RESULT": "failure"})
+    assert r.returncode == 0, r.stderr
+    assert "issue create" in stub_bin["gh_log"].read_text()
 
 
 # --------------------------------------------------------------------------

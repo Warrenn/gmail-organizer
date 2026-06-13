@@ -45,6 +45,20 @@ def test_mint_token_errors_when_no_client_config(monkeypatch):
     assert rc == 2
 
 
+def test_mint_token_errors_on_missing_client_secret_file(tmp_path, capsys):
+    rc = cli.cmd_mint_token(argparse.Namespace(client_secret=str(tmp_path / "nope.json")))
+    assert rc == 2
+    assert "Could not read client secret file" in capsys.readouterr().err
+
+
+def test_mint_token_errors_on_invalid_json(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    rc = cli.cmd_mint_token(argparse.Namespace(client_secret=str(bad)))
+    assert rc == 2
+    assert "not valid JSON" in capsys.readouterr().err
+
+
 def test_mint_token_is_a_registered_subcommand():
     parser = cli.build_parser()
     args = parser.parse_args(["mint-token"])

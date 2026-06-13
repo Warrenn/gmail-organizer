@@ -76,7 +76,7 @@ Drop `DRY_RUN=false` only when you intend to create a real branch/PR.
 | `SSM_PREFIX` | `/cleanup-gmail` | Parameter Store namespace for creds. |
 | `FEEDBACK_FILE` | `feedback.json` | Scan output / refine input. |
 | `RESOLVED_FILE` | `feedback_resolved.json` | Resolved-markers manifest (read by `cleanup-markers`). |
-| `PROMPT_FILE` | `.github/prompts/feedback-loop.md` | Brief the Claude refine step runs. |
+| `PROMPT_FILE` | `.github/prompts/feedback-loop.md` | Prompt file the Claude refine step runs with. |
 | `BASE_REF` | `origin/main` | Base for the `verify` allow-list diff. |
 | `LOOP_AUTO_MERGE` | `false` | `true` → `verify` auto-merges the PR. |
 | `BRANCH_NAME` | _(computed)_ | Override the refinement branch name. |

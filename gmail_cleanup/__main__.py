@@ -15,7 +15,14 @@ def cmd_mint_token(args: argparse.Namespace) -> int:
     prints the resulting token JSON to stdout. Writes nothing to disk — pipe
     the output straight into `aws ssm put-parameter`."""
     if args.client_secret:
-        client_config = json.loads(Path(args.client_secret).read_text())
+        try:
+            client_config = json.loads(Path(args.client_secret).read_text())
+        except FileNotFoundError:
+            print(f"Could not read client secret file: {args.client_secret}", file=sys.stderr)
+            return 2
+        except json.JSONDecodeError:
+            print(f"Client secret file is not valid JSON: {args.client_secret}", file=sys.stderr)
+            return 2
     elif os.environ.get(auth.CREDENTIALS_ENV):
         client_config = json.loads(os.environ[auth.CREDENTIALS_ENV])
     else:
