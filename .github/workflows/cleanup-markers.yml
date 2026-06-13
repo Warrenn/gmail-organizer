@@ -49,15 +49,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Restore Gmail credentials from Parameter Store
-        if: steps.check.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          aws ssm get-parameter --name /cleanup-gmail/gmail-credentials-json \
-            --with-decryption --query Parameter.Value --output text > credentials.json
-          aws ssm get-parameter --name /cleanup-gmail/gmail-token-json \
-            --with-decryption --query Parameter.Value --output text > token.json
-
       - name: Set up Python
         if: steps.check.outputs.skip != 'true'
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
@@ -70,16 +61,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 pyyaml
 
+      # Gmail token loaded from SSM into the environment only — never a file.
+      # The token self-contains the client id/secret/refresh token, so it is
+      # all the runtime needs; the env var dies with the step.
       - name: Run cleanup-markers
         if: steps.check.outputs.skip != 'true'
         run: |
           set -euo pipefail
+          GMAIL_TOKEN_JSON=$(aws ssm get-parameter --name /cleanup-gmail/gmail-token-json \
+            --with-decryption --query Parameter.Value --output text)
+          export GMAIL_TOKEN_JSON
           python -m gmail_cleanup cleanup-markers --input feedback_resolved.json
-
-      - name: Scrub creds
-        if: always()
-        run: |
-          shred -u credentials.json token.json 2>/dev/null || rm -f credentials.json token.json
 
   heartbeat:
     runs-on: ubuntu-latest

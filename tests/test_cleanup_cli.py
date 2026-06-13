@@ -7,7 +7,7 @@ from gmail_cleanup import __main__ as cli
 
 
 def _args(path):
-    return argparse.Namespace(input=str(path), credentials="creds.json", token="token.json")
+    return argparse.Namespace(input=str(path))
 
 
 def test_cmd_cleanup_markers_missing_file_is_noop(tmp_path):

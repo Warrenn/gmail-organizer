@@ -10,9 +10,10 @@ done, the workflow runs without any further AWS work from you.
 1. A GitHub OIDC **IAM identity provider** in your AWS account (one per
    account, reusable across all your GitHub repos).
 2. An assumable **IAM role** scoped to this repo, with permission to
-   read four specific Parameter Store params.
-3. Four **SecureString** parameters under `/cleanup-gmail/`, holding
-   the Anthropic API key + your Gmail OAuth + your clasp credentials.
+   read the Parameter Store params under `/cleanup-gmail/`.
+3. **SecureString** parameters under `/cleanup-gmail/`: `anthropic-api-key`
+   and `gmail-token-json` (required by the feedback-loop), plus `clasp-rc-json`
+   (only for `deploy.yml`). Credentials live in SSM only — never in files.
 
 All steps below assume the AWS region `eu-west-1` and account ID
 `<YOUR_ACCOUNT_ID>` — substitute your values. The Parameter Store
@@ -142,7 +143,10 @@ YAMLs (or set it as a GitHub repo variable, see below).
 
 ## Step 3 — Populate Parameter Store
 
-Four SecureString params, all under `/cleanup-gmail/`.
+SecureString params under `/cleanup-gmail/`. The feedback-loop needs
+`anthropic-api-key` and `gmail-token-json`; `clasp-rc-json` is only for
+`deploy.yml`. There is no `gmail-credentials-json` param — credentials are
+never persisted to a file.
 
 ### `/cleanup-gmail/anthropic-api-key`
 
@@ -157,36 +161,39 @@ aws ssm put-parameter \
   --description 'Anthropic API key for the feedback-loop GitHub Action'
 ```
 
-### `/cleanup-gmail/gmail-credentials-json`
-
-Contents of your local `credentials.json` (the OAuth client config from
-Google Cloud Console). Stored as a JSON string.
-
-```sh
-aws ssm put-parameter \
-  --name /cleanup-gmail/gmail-credentials-json \
-  --value "$(cat credentials.json)" \
-  --type SecureString
-```
-
 ### `/cleanup-gmail/gmail-token-json`
 
-Contents of your local `token.json` (the refresh-token-bearing file
-created by the first OAuth grant).
+The authorized-user token. This is the **only** Gmail secret the runtime
+needs — it self-contains the client id/secret and refresh token. **Credentials
+are never written to disk**: the `mint-token` command runs the OAuth consent
+flow and prints the token to stdout, which you pipe straight into SSM. Nothing
+touches the filesystem.
+
+You need a **Desktop** OAuth client JSON downloaded from Google Cloud Console
+(APIs & Services → Credentials). Then, in a checkout with the venv active:
 
 ```sh
-aws ssm put-parameter \
-  --name /cleanup-gmail/gmail-token-json \
-  --value "$(cat token.json)" \
-  --type SecureString
+# Reads the downloaded client config in memory, runs the browser consent,
+# and streams the resulting token straight into SSM — no token file is created.
+python -m gmail_cleanup mint-token \
+    --client-secret ~/Downloads/client_secret_*.json \
+  | aws ssm put-parameter \
+      --name /cleanup-gmail/gmail-token-json \
+      --type SecureString \
+      --value file:///dev/stdin
 ```
 
 > **OAuth refresh tokens generally don't rotate**, but Google can
 > invalidate them if the account does a security review or if the user
-> revokes the grant. If that happens, the workflow will fail with a
-> 401; re-grant locally (`rm token.json && python -m gmail_cleanup
-> discover --account ...` or any read-only command that triggers the
-> OAuth flow), then re-put the param with the fresh `token.json`.
+> revokes the grant. If that happens, the workflow fails with a 401;
+> re-run the `mint-token | put-parameter --overwrite` pipeline above to
+> refresh the SSM value. The access-token refresh that happens on every
+> run is in-memory only and is never persisted.
+
+> **No `gmail-credentials-json` parameter is required.** The OAuth client
+> config is only needed at mint time (passed via `--client-secret`); the
+> runtime never uses it. Delete the downloaded client JSON afterwards if you
+> want nothing sensitive left on disk.
 
 ### `/cleanup-gmail/clasp-rc-json`
 
