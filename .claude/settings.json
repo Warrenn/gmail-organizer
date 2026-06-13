@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(shellcheck *)",
+      "Bash(aws *)",
+      "Bash(gh *)",
+      "Bash(git *)",
+      "Bash(clasp *)",
+      "Bash(jq *)",
+      "Bash(sed *)",
+      "Bash(pkill *)",
+      "Bash(rm *)",
+      "Bash(echo *)",
+      "Bash(python3 *)",
+      "Bash(python *)"
+    ]
+  }
+}
