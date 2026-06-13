@@ -12,8 +12,9 @@ done, the workflow runs without any further AWS work from you.
 2. An assumable **IAM role** scoped to this repo, with permission to
    read the Parameter Store params under `/cleanup-gmail/`.
 3. **SecureString** parameters under `/cleanup-gmail/`: `anthropic-api-key`
-   and `gmail-token-json` (required by the feedback-loop), plus `clasp-rc-json`
-   (only for `deploy.yml`). Credentials live in SSM only — never in files.
+   and `gmail-token-json` (required by the feedback-loop), plus
+   `apps-script-token-json` (only for `deploy.yml`). Credentials live in SSM
+   only — never in files.
 
 All steps below assume the AWS region `eu-west-1` and account ID
 `<YOUR_ACCOUNT_ID>` — substitute your values. The Parameter Store
@@ -144,8 +145,8 @@ YAMLs (or set it as a GitHub repo variable, see below).
 ## Step 3 — Populate Parameter Store
 
 SecureString params under `/cleanup-gmail/`. The feedback-loop needs
-`anthropic-api-key` and `gmail-token-json`; `clasp-rc-json` is only for
-`deploy.yml`. There is no `gmail-credentials-json` param — credentials are
+`anthropic-api-key` and `gmail-token-json`; `apps-script-token-json` is only
+for `deploy.yml`. There is no `gmail-credentials-json` param — credentials are
 never persisted to a file.
 
 ### `/cleanup-gmail/anthropic-api-key`
@@ -195,16 +196,26 @@ python -m gmail_cleanup mint-token \
 > runtime never uses it. Delete the downloaded client JSON afterwards if you
 > want nothing sensitive left on disk.
 
-### `/cleanup-gmail/clasp-rc-json`
+### `/cleanup-gmail/apps-script-token-json`  (only for `deploy.yml`)
 
-Contents of your local `~/.clasprc.json` (clasp's saved auth state).
+A second OAuth token scoped **only** to `script.projects`, used by `deploy.yml`
+to push the regenerated Apps Script via the API (no clasp, no files). Mint it
+with the same fileless pipeline, passing `--scopes apps-script`:
 
 ```sh
-aws ssm put-parameter \
-  --name /cleanup-gmail/clasp-rc-json \
-  --value "$(cat ~/.clasprc.json)" \
-  --type SecureString
+python -m gmail_cleanup mint-token --scopes apps-script \
+    --client-secret ~/Downloads/<desktop-client>.json \
+  | aws ssm put-parameter --name /cleanup-gmail/apps-script-token-json \
+      --type SecureString --value file:///dev/stdin --overwrite
 ```
+
+Prerequisites for the Apps Script API (both required, as the script's owner):
+- Enable the **Apps Script API** in the GCP project:
+  `https://console.cloud.google.com/apis/library/script.googleapis.com?project=<PROJECT_ID>`
+- Turn on the per-user toggle: `https://script.google.com/home/usersettings`
+
+> There is **no** `clasp-rc-json` parameter — clasp was replaced by the
+> Apps Script API so no credential file is ever written, on the runner or locally.
 
 ---
 
@@ -220,6 +231,7 @@ In `Settings → Secrets and variables → Actions → Variables`:
 | `AWS_ROLE_TO_ASSUME`    | The role ARN from Step 2 (e.g. `arn:aws:iam::123456789012:role/gmail-organizer-loop`) |
 | `AWS_REGION`            | e.g. `eu-west-1`                                                       |
 | `LOOP_AUTO_MERGE`       | `false` for soft launch. Set to `true` later to enable auto-merge.     |
+| `APPS_SCRIPT_ID`        | The Apps Script project ID `deploy.yml` pushes to (Project Settings → Script ID). |
 
 Workflow files reference these via `${{ vars.AWS_ROLE_TO_ASSUME }}` etc.
 — no rotation needed and they're public-readable, which is fine since
