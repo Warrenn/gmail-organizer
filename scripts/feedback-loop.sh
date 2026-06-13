@@ -35,6 +35,7 @@ set -euo pipefail
 : "${PROMPT_FILE:=.github/prompts/feedback-loop.md}"
 : "${BASE_REF:=origin/main}"
 : "${LOOP_AUTO_MERGE:=false}"
+: "${CORPUS_PER_LABEL:=3}"                              # threads/label for the regression corpus
 : "${BRANCH_NAME:=}"                                   # refine computes one if empty
 : "${PR_NUMBER:=}"
 : "${GH_TOKEN:=}"
@@ -114,6 +115,13 @@ cmd_scan() {
   if [ "$count" -gt 0 ]; then
     HAS_MARKERS=true
     set_output has_markers true
+    # Build the regression corpus (sampled from the live mailbox) so refine can
+    # verify -X survivors and corpus-regression (constraints #3/#4). Only on
+    # marker runs, to bound Gmail sampling cost. Non-fatal: if it fails, refine
+    # still runs (and will bail on a -X it can't verify, as before).
+    log "Building regression corpus (per-label=$CORPUS_PER_LABEL)..."
+    "$PYTHON" -m gmail_cleanup corpus-build --per-label "$CORPUS_PER_LABEL" \
+      || log "corpus-build failed — refine will run without a corpus"
   else
     HAS_MARKERS=false
     set_output has_markers false
