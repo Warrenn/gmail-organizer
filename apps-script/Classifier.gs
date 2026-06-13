@@ -159,6 +159,9 @@ function classifyThread_(thread) {
   // subject-welcome-promo
   if ((subjHas('welcome to') || subjHas('updates') || subjHas('exciting') || subjHas('thanks for') || subjHas('review'))) return ['newsletters'];
 
+  // sign-in-links
+  if ((subjHas('secure link to log in') || subjHas('secure link to sign in') || subjHas('secure sign-in link') || subjHas('secure sign in link') || subjHas('sign-in link') || subjHas('sign in link') || subjHas('log in link') || subjHas('login link') || subjHas('magic link'))) return ['sign-in', 'notifications'];
+
   // noreply-notifications
   if ((fromHas('noreply') || fromHas('no-reply') || fromHas('donotreply'))) return ['notifications'];
 

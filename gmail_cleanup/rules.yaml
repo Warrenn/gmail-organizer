@@ -708,6 +708,24 @@ fallback_rules:
       subject_contains_any: ["welcome to", updates, exciting, "thanks for", review]
     labels: [newsletters]
 
+  # ----- Sign-in / magic-link login emails -----
+  # Catches passwordless "secure link to log in" / magic-link mails that
+  # otherwise fall through to the generic noreply/default fallbacks. Layers
+  # notifications alongside sign-in so the existing fallback label is preserved.
+  - id: sign-in-links
+    match:
+      subject_contains_any:
+        - "secure link to log in"
+        - "secure link to sign in"
+        - "secure sign-in link"
+        - "secure sign in link"
+        - "sign-in link"
+        - "sign in link"
+        - "log in link"
+        - "login link"
+        - "magic link"
+    labels: [sign-in, notifications]
+
   # ----- Last resort -----
   - id: noreply-notifications
     match:
