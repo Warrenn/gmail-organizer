@@ -3,10 +3,17 @@ name: feedback-loop
 # Autonomous label-rule refinement. Detailed design: STRATEGY.md.
 # Runtime brief Claude sees: .github/prompts/feedback-loop.md.
 #
-# Three-job pipeline:
-#   scan    — Gmail OAuth, runs feedback-scan, uploads feedback.json
-#   refine  — Anthropic key only (NO Gmail/clasp creds), runs Claude
-#   verify  — diff-allow-list check, optional auto-merge
+# ALL logic lives in scripts/feedback-loop.sh — the SAME script you can run
+# locally (`aws sso login` then `scripts/feedback-loop.sh all`). This workflow
+# only provides what a shell script cannot: OIDC→AWS auth, checkout, runtime
+# provisioning, and the cross-job feedback.json artifact hop. The three jobs
+# survive solely to preserve credential isolation:
+#   scan    — has Gmail creds only; runs `feedback-loop.sh scan`
+#   refine  — has Anthropic key only (NO Gmail/push creds); runs `... refine`
+#   verify  — has neither; runs `... verify`
+#
+# DRY_RUN=false is set per job so CI performs real side effects; locally the
+# script defaults DRY_RUN=true so runs are safe to repeat.
 #
 # AWS Parameter Store namespace: /cleanup-gmail/* (see docs/aws-bootstrap.md)
 
@@ -47,16 +54,6 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Pull Gmail credentials from Parameter Store
-        run: |
-          set -euo pipefail
-          aws ssm get-parameter --name /cleanup-gmail/gmail-credentials-json \
-            --with-decryption --query Parameter.Value --output text > credentials.json
-          aws ssm get-parameter --name /cleanup-gmail/gmail-token-json \
-            --with-decryption --query Parameter.Value --output text > token.json
-          test -s credentials.json
-          test -s token.json
-
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
@@ -67,18 +64,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 pyyaml
 
-      - name: Run feedback-scan
+      # Pulls Gmail creds from SSM, scans for +X/-X markers, scrubs creds.
+      - name: feedback-loop scan
         id: scan
-        run: |
-          set -euo pipefail
-          python -m gmail_cleanup feedback-scan --output feedback.json --exit-zero-on-empty
-          count=$(python -c "import json; print(len(json.load(open('feedback.json'))['markers']))")
-          echo "markers=$count"
-          if [ "$count" -gt 0 ]; then
-            echo "has_markers=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_markers=false" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          DRY_RUN: "false"
+        run: scripts/feedback-loop.sh scan
 
       - name: Upload feedback.json artifact
         if: steps.scan.outputs.has_markers == 'true'
@@ -87,11 +78,6 @@ jobs:
           name: feedback
           path: feedback.json
           retention-days: 7
-
-      - name: Scrub Gmail credentials from runner
-        if: always()
-        run: |
-          shred -u credentials.json token.json 2>/dev/null || rm -f credentials.json token.json
 
   # ---------------------------------------------------------------------------
   # Job 2: refine — Anthropic key only, Claude does the rule edits
@@ -105,13 +91,12 @@ jobs:
       pull-requests: write  # open/label the PR
     if: needs.scan.outputs.has_markers == 'true'
     outputs:
-      branch: ${{ steps.branch.outputs.name }}
-      pr_number: ${{ steps.pr.outputs.number }}
+      branch: ${{ steps.refine.outputs.branch }}
+      pr_number: ${{ steps.refine.outputs.pr_number }}
     steps:
       # Containment: do NOT persist a push-capable token in git config. The
-      # claude-code-action step below must run with no ambient write
-      # credentials — the explicit push step at the end authenticates only for
-      # that single push.
+      # script's claude step runs with no ambient write credentials — it
+      # authenticates the single push explicitly via GH_TOKEN.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           persist-credentials: false
@@ -122,28 +107,10 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Pull Anthropic API key from Parameter Store
-        id: secrets
-        run: |
-          set -euo pipefail
-          key=$(aws ssm get-parameter --name /cleanup-gmail/anthropic-api-key \
-            --with-decryption --query Parameter.Value --output text)
-          echo "::add-mask::$key"
-          echo "ANTHROPIC_API_KEY=$key" >> "$GITHUB_ENV"
-
       - name: Download feedback.json artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: feedback
-
-      - name: Create refinement branch
-        id: branch
-        run: |
-          name="loop/feedback-$(date -u +%Y%m%d-%H%M%S)"
-          git config user.name "feedback-loop-bot"
-          git config user.email "feedback-loop@noreply.local"
-          git checkout -b "$name"
-          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python (for test runs Claude triggers)
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
@@ -155,50 +122,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 pyyaml pytest
 
-      - name: Load runtime prompt
-        id: load_prompt
-        run: |
-          {
-            echo 'prompt<<EOF_FEEDBACK_PROMPT'
-            cat .github/prompts/feedback-loop.md
-            echo 'EOF_FEEDBACK_PROMPT'
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Run claude-code-action
-        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251  # v1
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
-          anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
-          prompt: ${{ steps.load_prompt.outputs.prompt }}
-          # Claude may run pytest, python -m gmail_cleanup …, git, gh.
-          # No external network access beyond pip/git/gh.
+          node-version: "20"
 
-      - name: Push refinement branch
-        # Authenticate only here — credentials were NOT persisted at checkout,
-        # so Claude's step ran without push access. GITHUB_TOKEN is auto-masked.
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" \
-            push -u origin "${{ steps.branch.outputs.name }}"
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code
 
-      - name: Open or update PR
-        id: pr
+      # Pulls the Anthropic key from SSM, branches, runs Claude headless against
+      # .github/prompts/feedback-loop.md, pushes, opens/updates the PR.
+      - name: feedback-loop refine
+        id: refine
         env:
+          DRY_RUN: "false"
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          existing=$(gh pr list --head ${{ steps.branch.outputs.name }} --json number -q '.[0].number' || echo "")
-          if [ -z "$existing" ]; then
-            url=$(gh pr create \
-              --title "feedback-loop: $(date -u +%Y-%m-%d) refinement" \
-              --body "Autonomous refinement from \`feedback-loop.yml\`. See commits for per-marker reasoning. Triage: corpus regression + property tests are CI-gated." \
-              --label loop-autonomous)
-            num=${url##*/}
-          else
-            num=$existing
-          fi
-          echo "number=$num" >> "$GITHUB_OUTPUT"
+        run: scripts/feedback-loop.sh refine
 
   # ---------------------------------------------------------------------------
   # Job 3: verify — diff-allow-list, optional auto-merge
@@ -218,43 +157,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false   # uses GH_TOKEN env for gh, not git creds
 
-      - name: Check allow-list of touched files
-        id: allowlist
+      # Rejects any file outside the allow-list (escape → close PR + issue),
+      # then optionally auto-merges when repo var LOOP_AUTO_MERGE=true.
+      - name: feedback-loop verify
         env:
+          DRY_RUN: "false"
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.refine.outputs.pr_number }}
-        run: |
-          set -euo pipefail
-          # The only files Claude is permitted to modify:
-          allowed_re='^(gmail_cleanup/rules\.yaml|tests/(corpus|corpus_disagreements)\.json|apps-script/(Rules|Classifier)\.gs|feedback_resolved\.json)$'
-          touched=$(git diff --name-only origin/main...HEAD)
-          echo "Touched files:"
-          echo "$touched"
-          violations=""
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            if ! echo "$f" | grep -qE "$allowed_re"; then
-              violations="$violations\n$f"
-            fi
-          done <<< "$touched"
-          if [ -n "$violations" ]; then
-            printf "Violations:%b\n" "$violations"
-            gh pr edit "$PR_NUMBER" --add-label loop-escape
-            gh pr comment "$PR_NUMBER" --body "$(printf 'Loop escape detected — Claude wrote to files outside the allow-list:%b\n\nThis PR is being closed automatically.' "$violations")"
-            gh pr close "$PR_NUMBER"
-            gh issue create \
-              --title "loop-escape: feedback-loop wrote to disallowed files" \
-              --label loop-broken \
-              --body "$(printf 'PR #%s touched off-list files:%b' "$PR_NUMBER" "$violations")"
-            exit 1
-          fi
-
-      - name: Maybe auto-merge
-        if: vars.LOOP_AUTO_MERGE == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr merge ${{ needs.refine.outputs.pr_number }} --auto --squash
+          BASE_REF: origin/main
+          LOOP_AUTO_MERGE: ${{ vars.LOOP_AUTO_MERGE }}
+        run: scripts/feedback-loop.sh verify
 
   # ---------------------------------------------------------------------------
   # Heartbeat: any job failure → open a loop-broken issue
@@ -263,14 +175,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: [scan, refine, verify]
     permissions:
+      contents: read  # checkout (to run the script)
       issues: write   # file a loop-broken issue on failure
     if: always() && (needs.scan.result == 'failure' || needs.refine.result == 'failure' || needs.verify.result == 'failure')
     steps:
-      - name: File loop-broken issue
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          persist-credentials: false
+
+      - name: feedback-loop heartbeat
         env:
+          DRY_RUN: "false"
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh issue create \
-            --title "feedback-loop run ${{ github.run_id }} failed" \
-            --label loop-broken \
-            --body "scan=${{ needs.scan.result }} refine=${{ needs.refine.result }} verify=${{ needs.verify.result }}\n\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          SCAN_RESULT: ${{ needs.scan.result }}
+          REFINE_RESULT: ${{ needs.refine.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: scripts/feedback-loop.sh heartbeat

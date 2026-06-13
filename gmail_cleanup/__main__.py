@@ -2,14 +2,43 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 from gmail_cleanup import apply, auth, classify, cleanup as cleanup_markers, corpus, discover, feedback, flatten, generate, labels, propose, rename, rule_interpreter
 
 
+def cmd_mint_token(args: argparse.Namespace) -> int:
+    """One-time OAuth grant. Reads a Desktop OAuth client config (from
+    --client-secret or $GMAIL_CREDENTIALS_JSON), runs the consent flow, and
+    prints the resulting token JSON to stdout. Writes nothing to disk — pipe
+    the output straight into `aws ssm put-parameter`."""
+    if args.client_secret:
+        try:
+            client_config = json.loads(Path(args.client_secret).read_text())
+        except FileNotFoundError:
+            print(f"Could not read client secret file: {args.client_secret}", file=sys.stderr)
+            return 2
+        except json.JSONDecodeError:
+            print(f"Client secret file is not valid JSON: {args.client_secret}", file=sys.stderr)
+            return 2
+    elif os.environ.get(auth.CREDENTIALS_ENV):
+        client_config = json.loads(os.environ[auth.CREDENTIALS_ENV])
+    else:
+        print(
+            f"No OAuth client config. Pass --client-secret PATH or set "
+            f"${auth.CREDENTIALS_ENV} to the Desktop client JSON.",
+            file=sys.stderr,
+        )
+        return 2
+    sys.stdout.write(auth.mint_token_json(client_config))
+    sys.stdout.write("\n")
+    return 0
+
+
 def cmd_discover(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     discover.run_discover(
         service,
         output_path=Path(args.output),
@@ -45,7 +74,7 @@ def cmd_create_labels(args: argparse.Namespace) -> int:
         if confirm != "yes":
             print("aborted")
             return 1
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     summary = labels.create_missing_labels(service, target)
     print("\n=== summary ===")
     print(f"created: {len(summary['created'])}")
@@ -63,7 +92,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     label_summary = json.loads(Path(args.label_summary).read_text())
     name_to_id = {entry["name"]: entry["id"] for entry in label_summary.get("created", [])}
 
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     existing = labels.list_existing_label_names(service)
     for name, id_ in existing.items():
         name_to_id.setdefault(name, id_)
@@ -93,13 +122,13 @@ def cmd_apply(args: argparse.Namespace) -> int:
 
 
 def cmd_classify_export(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     classify.export_for_classification(service, Path(args.output))
     return 0
 
 
 def cmd_classify_apply(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     summary = classify.apply_classification(
         service,
         Path(args.classification),
@@ -118,7 +147,7 @@ def cmd_classify_apply(args: argparse.Namespace) -> int:
 
 
 def cmd_flatten(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     all_labels = flatten.list_all_labels(service)
     user_labels = [l for l in all_labels if l.get("type") == "user"]
     nested = [l for l in user_labels if "/" in l.get("name", "")]
@@ -161,7 +190,7 @@ def cmd_flatten(args: argparse.Namespace) -> int:
 
 
 def cmd_rename_labels(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     all_labels = flatten.list_all_labels(service)
     user_labels = [
         {"id": l["id"], "name": l["name"]}
@@ -257,14 +286,14 @@ def cmd_cleanup_markers(args: argparse.Namespace) -> int:
         if "thread_ids" in entry and not isinstance(entry["thread_ids"], list):
             print(f"{resolved_path}: entry {i} thread_ids must be a list", file=sys.stderr)
             return 2
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     summary = cleanup_markers.cleanup_resolved_markers(service, resolved)
     print(json.dumps(summary, indent=2))
     return 0 if not summary["errors"] else 2
 
 
 def cmd_feedback_scan(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     result = feedback.scan_for_markers(service)
     Path(args.output).write_text(json.dumps(result, indent=2))
     n_markers = len(result["markers"])
@@ -276,7 +305,7 @@ def cmd_feedback_scan(args: argparse.Namespace) -> int:
 
 
 def cmd_corpus_build(args: argparse.Namespace) -> int:
-    service = auth.get_service(Path(args.credentials), Path(args.token))
+    service = auth.get_service()
     raw = corpus.build_corpus(
         service,
         per_label_sample_size=args.per_label,
@@ -324,8 +353,8 @@ def cmd_generate_apps_script(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gmail_cleanup", description="Gmail mailbox cleanup helper")
-    p.add_argument("--credentials", default="credentials.json")
-    p.add_argument("--token", default="token.json")
+    # Credentials are sourced in memory from $GMAIL_TOKEN_JSON (see gmail_cleanup.auth);
+    # they are never read from or written to disk.
     sub = p.add_subparsers(dest="cmd", required=True)
 
     d = sub.add_parser("discover", help="Phase 1 — sample mailbox, dump discover.json")
@@ -401,6 +430,11 @@ def build_parser() -> argparse.ArgumentParser:
     rl.add_argument("--exclude", action="append", default=[], help="Additional label name to exclude from rename (repeatable)")
     rl.add_argument("--output", default=None, help="Write apply summary JSON to this path")
     rl.set_defaults(func=cmd_rename_labels)
+
+    mt = sub.add_parser("mint-token", help="One-time OAuth grant — prints token JSON to stdout (no file) for piping into SSM")
+    mt.add_argument("--client-secret", default=None,
+                    help="Path to a downloaded Desktop OAuth client JSON (else read from $GMAIL_CREDENTIALS_JSON)")
+    mt.set_defaults(func=cmd_mint_token)
 
     return p
 

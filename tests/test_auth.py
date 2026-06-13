@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
 from gmail_cleanup import auth
+
+TOKEN_PAYLOAD = {
+    "token": "fake-access-token",
+    "refresh_token": "fake-refresh-token",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "client_id": "fake-client-id",
+    "client_secret": "fake-client-secret",
+    "scopes": list(auth.SCOPES),
+}
 
 
 def test_scopes_are_modify_and_labels_only():
@@ -19,50 +27,70 @@ def test_scopes_exclude_full_mail_scope():
     assert "https://mail.google.com/" not in auth.SCOPES
 
 
-def test_load_cached_credentials_returns_none_when_missing(tmp_path: Path):
-    token = tmp_path / "token.json"
-    assert auth.load_cached_credentials(token) is None
-
-
-def test_load_cached_credentials_parses_existing_file(tmp_path: Path):
-    token = tmp_path / "token.json"
-    payload = {
-        "token": "fake-access-token",
-        "refresh_token": "fake-refresh-token",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "client_id": "fake-client-id",
-        "client_secret": "fake-client-secret",
-        "scopes": list(auth.SCOPES),
-    }
-    token.write_text(json.dumps(payload))
-    creds = auth.load_cached_credentials(token)
-    assert creds is not None
+def test_credentials_from_token_json_parses_in_memory():
+    creds = auth.credentials_from_token_json(json.dumps(TOKEN_PAYLOAD))
     assert creds.refresh_token == "fake-refresh-token"
     assert set(creds.scopes) == set(auth.SCOPES)
 
 
-def test_save_credentials_roundtrip(tmp_path: Path):
-    from google.oauth2.credentials import Credentials
-
-    token = tmp_path / "token.json"
-    creds = Credentials(
-        token="acc",
-        refresh_token="ref",
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id="cid",
-        client_secret="csec",
-        scopes=list(auth.SCOPES),
-    )
-    auth.save_credentials(creds, token)
-    assert token.exists()
-    reloaded = auth.load_cached_credentials(token)
-    assert reloaded is not None
-    assert reloaded.refresh_token == "ref"
+def test_get_service_raises_clear_error_when_env_unset(monkeypatch):
+    monkeypatch.delenv(auth.TOKEN_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=auth.TOKEN_ENV):
+        auth.get_service()
 
 
-def test_credentials_path_must_exist_for_initial_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    """If no token cached AND no credentials.json, get_service must raise a clear error."""
-    missing_creds = tmp_path / "credentials.json"
-    missing_token = tmp_path / "token.json"
-    with pytest.raises(FileNotFoundError, match="credentials.json"):
-        auth.get_service(missing_creds, missing_token)
+def test_get_service_builds_from_env_without_touching_disk(monkeypatch, tmp_path):
+    monkeypatch.setenv(auth.TOKEN_ENV, json.dumps(TOKEN_PAYLOAD))
+    # valid token → straight to build(), no refresh/network
+    monkeypatch.setattr(auth.Credentials, "valid", property(lambda self: True))
+    built = {}
+    monkeypatch.setattr(auth, "build", lambda *a, **k: built.setdefault("svc", object()))
+    monkeypatch.chdir(tmp_path)
+
+    svc = auth.get_service()
+    assert svc is built["svc"]
+    # nothing was written to disk
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_get_service_does_not_persist_token_on_refresh(monkeypatch, tmp_path):
+    monkeypatch.setenv(auth.TOKEN_ENV, json.dumps(TOKEN_PAYLOAD))
+    monkeypatch.chdir(tmp_path)
+
+    # Force the "needs refresh" branch and stub the network refresh.
+    monkeypatch.setattr(auth.Credentials, "valid", property(lambda self: False))
+    monkeypatch.setattr(auth.Credentials, "expired", property(lambda self: True))
+    refreshed = {}
+    monkeypatch.setattr(auth.Credentials, "refresh",
+                        lambda self, request: refreshed.setdefault("did", True))
+    monkeypatch.setattr(auth, "build", lambda *a, **k: object())
+
+    auth.get_service()
+    assert refreshed.get("did") is True
+    # refresh must NOT write a token file anywhere
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_mint_token_json_returns_string_and_writes_no_file(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    class FakeCreds:
+        def to_json(self):
+            return json.dumps(TOKEN_PAYLOAD)
+
+    class FakeFlow:
+        def run_local_server(self, *a, **k):
+            return FakeCreds()
+
+    monkeypatch.setattr(auth.InstalledAppFlow, "from_client_config",
+                        classmethod(lambda cls, config, scopes: FakeFlow()))
+
+    out = auth.mint_token_json({"installed": {"client_id": "x"}})
+    assert json.loads(out)["refresh_token"] == "fake-refresh-token"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_auth_module_has_no_file_persistence_functions():
+    # The fileless contract: these file-based helpers must be gone.
+    assert not hasattr(auth, "save_credentials")
+    assert not hasattr(auth, "load_cached_credentials")
