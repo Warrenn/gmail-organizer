@@ -150,6 +150,11 @@ cmd_refine() {
   local base_sha
   base_sha=$(git rev-parse HEAD)
 
+  # Start from an empty resolved-markers manifest so entries already consumed by
+  # a prior merged run cannot re-fire in cleanup-markers (which reads this file
+  # on every merged loop PR). Claude appends only THIS run's resolutions.
+  printf '[]\n' > "$RESOLVED_FILE"
+
   [ -s "$PROMPT_FILE" ] || die "prompt file not found: $PROMPT_FILE"
   log "Running Claude against $PROMPT_FILE on branch $branch"
   # Claude edits and commits only — withhold push/PR credentials from its
