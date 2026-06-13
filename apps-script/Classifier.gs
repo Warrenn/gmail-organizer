@@ -114,6 +114,9 @@ function classifyThread_(thread) {
   // auth-verification
   if (((fromHas('verificationemail') || fromHas('mailer-daemon')) || (subjHas('verify your email') || subjHas('confirm your email') || subjHas('authentication')))) return ['notifications'];
 
+  // sign-in-links
+  if ((subjHas('secure link to log in') || subjHas('link to log in') || subjHas('link to sign in') || subjHas('sign-in link') || subjHas('sign in link') || subjHas('log in link') || subjHas('magic link'))) return ['sign-in', 'notifications'];
+
   // recruiters
   if (((fromHas('e-merge.co.za') || fromHas('sabenzait.co.za') || fromHas('miprint.co.za') || fromHas('pillango.co.za') || fromHas('esmartgroup.co.za') || fromHas('networkrecruitment.co.za') || fromHas('stand-outstaffing') || fromHas('ringier.co.za') || fromHas('skillzpage.com') || fromHas('jobcrystal.com') || fromHas('ilaunch.co.za') || fromHas('1-grid.breezy') || fromHas('bberecruitment') || fromHas('pbtgroup.co.za') || fromHas('believeresourcing') || fromHas('millenniumtech.co.za') || fromHas('kmgt.co.za') || fromHas('the-argo.net') || fromHas('scoutit.online') || fromHas('aridconsulting') || fromHas('plusonex.com') || fromHas('attainpeople.co.za') || fromHas('ikbi.co.za') || fromHas('holbourne.co.za') || fromHas('peoplesolved.com') || fromHas('swiftmomentum') || fromHas('goldenrule.co.za') || fromHas('planet10.recruitmail') || fromHas('mspstaffing.co.za') || fromHas('resourgenix.com') || fromHas('perfsys.com') || fromHas('lesedipfs.co.za') || fromHas('remoteok.com') || fromHas('topcv.com') || fromHas('intch.org') || fromHas('jobs-listings@linkedin') || fromHas('jobalerts')) || (subjHas('remote role') || subjHas('career opportunit') || subjHas('cloud architect') || subjHas('devops engineer')))) return ['pnet', 'newsletters'];
 

@@ -562,6 +562,22 @@ fallback_rules:
         - {subject_contains_any: ["verify your email", "confirm your email", "authentication"]}
     labels: [notifications]
 
+  # ----- Sign-in / magic-link emails (passwordless login links) -----
+  # Distinct from otp-fallback (numeric one-time codes): these carry a
+  # clickable login/magic link rather than a code. Subject-phrase based so it
+  # generalises across senders without claiming an entire sender domain.
+  - id: sign-in-links
+    match:
+      subject_contains_any:
+        - "secure link to log in"
+        - "link to log in"
+        - "link to sign in"
+        - "sign-in link"
+        - "sign in link"
+        - "log in link"
+        - "magic link"
+    labels: [sign-in, notifications]
+
   # ----- Recruiters → Pnet + Newsletters -----
   - id: recruiters
     match:
