@@ -71,12 +71,17 @@ jobs:
           DRY_RUN: "false"
         run: scripts/feedback-loop.sh scan
 
-      - name: Upload feedback.json artifact
+      # feedback.json + the freshly-built regression corpus (tests/corpus.json)
+      # so the refine job can verify -X survivors / corpus regression.
+      - name: Upload feedback + corpus artifact
         if: steps.scan.outputs.has_markers == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: feedback
-          path: feedback.json
+          path: |
+            feedback.json
+            tests/corpus.json
+          if-no-files-found: warn
           retention-days: 7
 
   # ---------------------------------------------------------------------------
