@@ -69,6 +69,21 @@ guarded() {
   fi
 }
 
+# Push a branch to origin. With GH_TOKEN (CI) authenticate via a Basic
+# x-access-token header — the scheme GitHub's git-over-HTTPS requires (a Bearer
+# header is rejected as invalid credentials). Without GH_TOKEN, rely on local
+# git auth (SSH / credential helper).
+push_branch() {
+  local branch="$1"
+  if [ -n "$GH_TOKEN" ]; then
+    local basic
+    basic=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')
+    git -c http.extraheader="AUTHORIZATION: basic ${basic}" push -u origin "$branch"
+  else
+    git push -u origin "$branch"
+  fi
+}
+
 ssm() {
   aws ssm get-parameter --name "$1" --with-decryption \
     --query Parameter.Value --output text
@@ -127,16 +142,20 @@ cmd_refine() {
 
   [ -s "$PROMPT_FILE" ] || die "prompt file not found: $PROMPT_FILE"
   log "Running Claude against $PROMPT_FILE on branch $branch"
-  claude -p "$(cat "$PROMPT_FILE")" \
+  # Claude edits and commits only — withhold push/PR credentials from its
+  # environment (containment: it must not be able to reach GitHub). The harness
+  # does the deterministic push + PR below.
+  env -u GH_TOKEN -u GITHUB_TOKEN claude -p "$(cat "$PROMPT_FILE")" \
     --permission-mode acceptEdits \
     --allowed-tools "Bash Edit Read Write Glob Grep"
 
-  # Push — authenticate via GH_TOKEN only if provided (CI); else local git auth.
-  if [ -n "$GH_TOKEN" ]; then
-    guarded git -c http.extraheader="AUTHORIZATION: bearer ${GH_TOKEN}" push -u origin "$branch"
-  else
-    guarded git push -u origin "$branch"
+  # Backstop: make sure Claude's edits are committed so there is something to push.
+  if [ -n "$(git status --porcelain)" ]; then
+    git add -A
+    git commit -m "feedback-loop: rule refinements" >/dev/null
   fi
+
+  guarded push_branch "$branch"
 
   # Open or update the PR.
   local existing
