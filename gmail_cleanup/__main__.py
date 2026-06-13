@@ -32,8 +32,47 @@ def cmd_mint_token(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    sys.stdout.write(auth.mint_token_json(client_config))
+    scope_sets = {"gmail": auth.GMAIL_SCOPES, "apps-script": auth.APPS_SCRIPT_SCOPES}
+    scopes = scope_sets[getattr(args, "scopes", "gmail")]
+    sys.stdout.write(auth.mint_token_json(client_config, scopes=scopes))
     sys.stdout.write("\n")
+    return 0
+
+
+def _build_apps_script_files(apps_dir: str) -> list[dict]:
+    """Build the Apps Script API ``files[]`` payload from a local directory.
+
+    `.gs` → SERVER_JS, `.html` → HTML, `.json` → JSON. The file ``name`` is the
+    stem (so ``appsscript.json`` becomes the required manifest named
+    ``appsscript``). ``updateContent`` replaces ALL content, so every file in
+    the project must be included.
+    """
+    type_by_ext = {".gs": "SERVER_JS", ".html": "HTML", ".json": "JSON"}
+    files = []
+    for p in sorted(Path(apps_dir).iterdir()):
+        if not p.is_file():
+            continue
+        file_type = type_by_ext.get(p.suffix.lower())
+        if not file_type:
+            continue
+        files.append({"name": p.stem, "type": file_type, "source": p.read_text()})
+    return files
+
+
+def cmd_deploy_apps_script(args: argparse.Namespace) -> int:
+    """Push the apps-script/ directory to the Apps Script project via the API,
+    using an in-memory OAuth token ($APPS_SCRIPT_TOKEN_JSON). No clasp, no files."""
+    script_id = args.script_id or os.environ.get("APPS_SCRIPT_ID")
+    if not script_id:
+        print("No script id. Pass --script-id or set $APPS_SCRIPT_ID.", file=sys.stderr)
+        return 2
+    files = _build_apps_script_files(args.apps_dir)
+    if not files:
+        print(f"No Apps Script files found in {args.apps_dir}", file=sys.stderr)
+        return 2
+    service = auth.get_apps_script_service()
+    service.projects().updateContent(scriptId=script_id, body={"files": files}).execute()
+    print(f"Pushed {len(files)} file(s) to Apps Script project {script_id}")
     return 0
 
 
@@ -434,7 +473,14 @@ def build_parser() -> argparse.ArgumentParser:
     mt = sub.add_parser("mint-token", help="One-time OAuth grant — prints token JSON to stdout (no file) for piping into SSM")
     mt.add_argument("--client-secret", default=None,
                     help="Path to a downloaded Desktop OAuth client JSON (else read from $GMAIL_CREDENTIALS_JSON)")
+    mt.add_argument("--scopes", choices=["gmail", "apps-script"], default="gmail",
+                    help="Which scope set to request: gmail (default) or apps-script (deploy)")
     mt.set_defaults(func=cmd_mint_token)
+
+    da = sub.add_parser("deploy-apps-script", help="Push apps-script/ to the Apps Script project via the API (fileless, no clasp)")
+    da.add_argument("--script-id", default=None, help="Apps Script project ID (else $APPS_SCRIPT_ID)")
+    da.add_argument("--apps-dir", default="apps-script")
+    da.set_defaults(func=cmd_deploy_apps_script)
 
     return p
 

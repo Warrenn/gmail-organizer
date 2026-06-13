@@ -13,7 +13,8 @@ from gmail_cleanup import __main__ as cli
 def test_mint_token_from_env_prints_token_and_writes_no_file(monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("GMAIL_CREDENTIALS_JSON", json.dumps({"installed": {"client_id": "x"}}))
-    monkeypatch.setattr(cli.auth, "mint_token_json", lambda cfg: '{"refresh_token":"r"}')
+    monkeypatch.setattr(cli.auth, "mint_token_json",
+                        lambda cfg, scopes=None: '{"refresh_token":"r"}')
 
     rc = cli.cmd_mint_token(argparse.Namespace(client_secret=None))
     assert rc == 0
@@ -27,7 +28,7 @@ def test_mint_token_from_client_secret_file(monkeypatch, tmp_path, capsys):
     secret.write_text(json.dumps({"installed": {"client_id": "x"}}))
     captured = {}
 
-    def fake_mint(cfg):
+    def fake_mint(cfg, scopes=None):
         captured["cfg"] = cfg
         return '{"refresh_token":"r"}'
 
@@ -63,3 +64,32 @@ def test_mint_token_is_a_registered_subcommand():
     parser = cli.build_parser()
     args = parser.parse_args(["mint-token"])
     assert args.func is cli.cmd_mint_token
+
+
+def _capture_scopes(captured):
+    def fake_mint(cfg, scopes=None):
+        captured["scopes"] = scopes
+        return '{"refresh_token":"r"}'
+    return fake_mint
+
+
+def test_mint_token_defaults_to_gmail_scopes(monkeypatch):
+    monkeypatch.setenv("GMAIL_CREDENTIALS_JSON", json.dumps({"installed": {"client_id": "x"}}))
+    captured = {}
+    monkeypatch.setattr(cli.auth, "mint_token_json", _capture_scopes(captured))
+    cli.cmd_mint_token(argparse.Namespace(client_secret=None, scopes="gmail"))
+    assert captured["scopes"] == cli.auth.GMAIL_SCOPES
+
+
+def test_mint_token_apps_script_scopes(monkeypatch):
+    monkeypatch.setenv("GMAIL_CREDENTIALS_JSON", json.dumps({"installed": {"client_id": "x"}}))
+    captured = {}
+    monkeypatch.setattr(cli.auth, "mint_token_json", _capture_scopes(captured))
+    cli.cmd_mint_token(argparse.Namespace(client_secret=None, scopes="apps-script"))
+    assert captured["scopes"] == cli.auth.APPS_SCRIPT_SCOPES
+
+
+def test_mint_token_scopes_option_parses():
+    parser = cli.build_parser()
+    args = parser.parse_args(["mint-token", "--scopes", "apps-script"])
+    assert args.scopes == "apps-script"

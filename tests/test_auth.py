@@ -116,3 +116,54 @@ def test_auth_module_has_no_file_persistence_functions():
     # The fileless contract: these file-based helpers must be gone.
     assert not hasattr(auth, "save_credentials")
     assert not hasattr(auth, "load_cached_credentials")
+
+
+# ---- Apps Script API (deploy) scope + service ----------------------------
+def test_gmail_scopes_alias():
+    assert auth.SCOPES == auth.GMAIL_SCOPES
+
+
+def test_apps_script_scope_is_projects_only():
+    assert auth.APPS_SCRIPT_SCOPES == ["https://www.googleapis.com/auth/script.projects"]
+
+
+def test_get_apps_script_service_raises_without_env(monkeypatch):
+    monkeypatch.delenv(auth.APPS_SCRIPT_TOKEN_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=auth.APPS_SCRIPT_TOKEN_ENV):
+        auth.get_apps_script_service()
+
+
+def test_get_apps_script_service_builds_script_v1(monkeypatch):
+    monkeypatch.setenv(auth.APPS_SCRIPT_TOKEN_ENV, json.dumps(TOKEN_PAYLOAD))
+    monkeypatch.setattr(auth.Credentials, "valid", property(lambda self: True))
+    captured = {}
+
+    def fake_build(name, version, **kwargs):
+        captured["name"], captured["version"] = name, version
+        return object()
+
+    monkeypatch.setattr(auth, "build", fake_build)
+    svc = auth.get_apps_script_service()
+    assert svc is not None
+    assert captured == {"name": "script", "version": "v1"}
+
+
+def test_mint_token_json_uses_given_scopes(monkeypatch):
+    captured = {}
+
+    class FakeCreds:
+        def to_json(self):
+            return '{"refresh_token":"r"}'
+
+    class FakeFlow:
+        def run_local_server(self, *a, **k):
+            return FakeCreds()
+
+    def fake_from_client_config(cls, config, scopes):
+        captured["scopes"] = scopes
+        return FakeFlow()
+
+    monkeypatch.setattr(auth.InstalledAppFlow, "from_client_config",
+                        classmethod(fake_from_client_config))
+    auth.mint_token_json({"installed": {}}, scopes=auth.APPS_SCRIPT_SCOPES)
+    assert captured["scopes"] == auth.APPS_SCRIPT_SCOPES
