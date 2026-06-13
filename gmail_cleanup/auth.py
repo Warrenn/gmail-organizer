@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import sys
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -67,5 +69,8 @@ def mint_token_json(client_config: dict) -> str:
     ``aws ssm put-parameter``.
     """
     flow = InstalledAppFlow.from_client_config(client_config, SCOPES)
-    creds = flow.run_local_server(port=0)
+    # The OAuth flow prints its "Please visit this URL..." prompt to stdout;
+    # route that to stderr so the caller can pipe the token cleanly into SSM.
+    with contextlib.redirect_stdout(sys.stderr):
+        creds = flow.run_local_server(port=0)
     return creds.to_json()

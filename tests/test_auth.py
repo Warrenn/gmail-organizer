@@ -90,6 +90,28 @@ def test_mint_token_json_returns_string_and_writes_no_file(monkeypatch, tmp_path
     assert list(tmp_path.iterdir()) == []
 
 
+def test_mint_token_json_keeps_oauth_prompt_off_stdout(monkeypatch, capsys):
+    # The OAuth library prints "Please visit this URL..." to stdout. mint_token_json
+    # must keep stdout clean so the token can be piped straight into SSM.
+    class FakeCreds:
+        def to_json(self):
+            return '{"refresh_token":"r"}'
+
+    class FakeFlow:
+        def run_local_server(self, *a, **k):
+            print("Please visit this URL to authorize: http://example/auth")
+            return FakeCreds()
+
+    monkeypatch.setattr(auth.InstalledAppFlow, "from_client_config",
+                        classmethod(lambda cls, config, scopes: FakeFlow()))
+
+    token = auth.mint_token_json({"installed": {"client_id": "x"}})
+    out, err = capsys.readouterr()
+    assert token == '{"refresh_token":"r"}'
+    assert "Please visit" not in out   # nothing but the token may reach stdout
+    assert "Please visit" in err       # the prompt is routed to stderr
+
+
 def test_auth_module_has_no_file_persistence_functions():
     # The fileless contract: these file-based helpers must be gone.
     assert not hasattr(auth, "save_credentials")
