@@ -293,6 +293,15 @@ sender_rules:
     match: {from_contains: simola.co.za}
     labels: [work, simola]
 
+  # ----- chefconnect -----
+  # Donn Clendenon is the contracting counterpart for the ChefConnect
+  # engagement (Services Agreement / Docusign). User flagged his mail with
+  # +chefconnect. Keyed on his exact address — the only stable signal on the
+  # thread; chefconnect has no other generating rule yet.
+  - id: clendenon-chefconnect
+    match: {from_contains: donn@clendenon.com}
+    labels: [chefconnect]
+
 
 # ============================================================================
 # additive_subject_rules — Phase 2. Layer on top of any phase 1 match.
