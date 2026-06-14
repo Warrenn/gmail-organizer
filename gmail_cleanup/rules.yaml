@@ -293,6 +293,14 @@ sender_rules:
     match: {from_contains: simola.co.za}
     labels: [work, simola]
 
+  # ----- chefconnect -----
+  # +chefconnect marker (2026-06-14): direct correspondence from the
+  # ChefConnect contact Donn Clendenon (Services Agreement / Docusign).
+  # Scoped to the exact sender to avoid over-matching the personal domain.
+  - id: clendenon-chefconnect-sender
+    match: {from_contains: donn@clendenon.com}
+    labels: [chefconnect]
+
 
 # ============================================================================
 # additive_subject_rules — Phase 2. Layer on top of any phase 1 match.
