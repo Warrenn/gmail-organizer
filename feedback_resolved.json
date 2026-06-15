@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "marker_label_id": "Label_5771311121790323943",
+    "marker_label_name": "+maliko-bus",
+    "sign": "+",
+    "target_label_name": "maliko-bus",
+    "thread_ids": ["19eca72569f54c01", "19eca68ef0f3beae"]
+  },
+  {
+    "marker_label_id": "Label_6863109805464803010",
+    "marker_label_name": "+chefconnect",
+    "sign": "+",
+    "target_label_name": "chefconnect",
+    "thread_ids": ["19eb20ca05dda502"]
+  }
+]

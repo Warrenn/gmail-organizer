@@ -248,6 +248,10 @@ sender_rules:
   - id: booking-sender
     match: {from_contains: booking.com}
     labels: [travel, booking]
+  - id: busbud-maliko-bus
+    # +maliko-bus marker: Busbud intercity bus ticket confirmations.
+    match: {from_contains: busbud.com}
+    labels: [maliko-bus]
 
   # ----- work -----
   - id: vpm-sender
@@ -292,6 +296,11 @@ sender_rules:
   - id: simola-sender
     match: {from_contains: simola.co.za}
     labels: [work, simola]
+  - id: clendenon-chefconnect
+    # +chefconnect marker: Donn Clendenon, services-agreement contact for the
+    # ChefConnect project. Narrow to the exact sender address.
+    match: {from_contains: donn@clendenon.com}
+    labels: [chefconnect]
 
 
 # ============================================================================

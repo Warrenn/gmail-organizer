@@ -80,6 +80,7 @@ const RULES = [
   { id: 'istore-sender', query: 'from:istore.co.za', labels: ['shopping', 'istore'] },
   { id: 'linkedin-sender', query: 'from:linkedin.com', labels: ['social', 'linkedin'] },
   { id: 'booking-sender', query: 'from:booking.com', labels: ['travel', 'booking'] },
+  { id: 'busbud-maliko-bus', query: 'from:busbud.com', labels: ['maliko-bus'] },
   { id: 'vpm-sender', query: 'from:vpmteam.co.za', labels: ['work', 'vpm'] },
   { id: 'busyweb-sender', query: 'from:busyweb.co.za', labels: ['work', 'busyweb'] },
   { id: 'amazon-sender', query: 'from:(aws.amazon.com OR amazonaws.com)', labels: ['work', 'aws'] },
@@ -94,6 +95,7 @@ const RULES = [
   { id: 'datachef-sender', query: 'from:datachef.co', labels: ['work', 'datachef'] },
   { id: 'ioco-sender', query: 'from:ioco.tech', labels: ['work', 'ioco'] },
   { id: 'simola-sender', query: 'from:simola.co.za', labels: ['work', 'simola'] },
+  { id: 'clendenon-chefconnect', query: 'from:donn@clendenon.com', labels: ['chefconnect'] },
 ];
 
 const SUBJECT_RULES = [
