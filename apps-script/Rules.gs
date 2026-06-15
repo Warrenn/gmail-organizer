@@ -80,6 +80,7 @@ const RULES = [
   { id: 'istore-sender', query: 'from:istore.co.za', labels: ['shopping', 'istore'] },
   { id: 'linkedin-sender', query: 'from:linkedin.com', labels: ['social', 'linkedin'] },
   { id: 'booking-sender', query: 'from:booking.com', labels: ['travel', 'booking'] },
+  { id: 'busbud-sender', query: 'from:busbud.com', labels: ['travel', 'maliko-bus'] },
   { id: 'vpm-sender', query: 'from:vpmteam.co.za', labels: ['work', 'vpm'] },
   { id: 'busyweb-sender', query: 'from:busyweb.co.za', labels: ['work', 'busyweb'] },
   { id: 'amazon-sender', query: 'from:(aws.amazon.com OR amazonaws.com)', labels: ['work', 'aws'] },

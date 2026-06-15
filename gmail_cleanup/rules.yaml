@@ -248,6 +248,9 @@ sender_rules:
   - id: booking-sender
     match: {from_contains: booking.com}
     labels: [travel, booking]
+  - id: busbud-sender
+    match: {from_contains: busbud.com}
+    labels: [travel, maliko-bus]
 
   # ----- work -----
   - id: vpm-sender
