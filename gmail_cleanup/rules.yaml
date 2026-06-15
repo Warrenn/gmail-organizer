@@ -293,6 +293,12 @@ sender_rules:
     match: {from_contains: simola.co.za}
     labels: [work, simola]
 
+  # ----- chefconnect -----
+  - id: chefconnect-donn
+    description: Donn Clendenon — ChefConnect services-agreement contact (+chefconnect marker)
+    match: {from_contains: donn@clendenon.com}
+    labels: [chefconnect]
+
 
 # ============================================================================
 # additive_subject_rules — Phase 2. Layer on top of any phase 1 match.

@@ -94,6 +94,8 @@ const RULES = [
   { id: 'datachef-sender', query: 'from:datachef.co', labels: ['work', 'datachef'] },
   { id: 'ioco-sender', query: 'from:ioco.tech', labels: ['work', 'ioco'] },
   { id: 'simola-sender', query: 'from:simola.co.za', labels: ['work', 'simola'] },
+  // Donn Clendenon — ChefConnect services-agreement contact (+chefconnect marker)
+  { id: 'chefconnect-donn', query: 'from:donn@clendenon.com', labels: ['chefconnect'] },
 ];
 
 const SUBJECT_RULES = [
