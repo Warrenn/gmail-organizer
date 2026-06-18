@@ -203,10 +203,13 @@ python -m pytest tests/ -x
 ### Step 6.5 — Write the resolved-markers manifest
 
 For every marker you successfully resolved (i.e., committed a rule change
-for), append an entry to `feedback_resolved.json` at the repo root. The
-post-merge `cleanup-markers` workflow reads this file to apply the
+for), append an entry to `feedback_resolved.json` at the repo root. Write
+the file to the worktree as before — but note it is **no longer committed**
+(it is gitignored and excluded from the commit allow-list). The pipeline's
+refine entrypoint ships it to the encrypted S3 artifact bucket, and the
+post-merge `cleanup-markers` step reads it from there to apply the
 Gmail-side cleanup (add/remove target label on source threads, delete
-marker label).
+marker label). Do not attempt to `git add` it.
 
 Shape:
 

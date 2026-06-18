@@ -36,7 +36,45 @@ The label tree is **flat** (no nested labels). What used to be
 
 ---
 
+## Autonomous feedback loop (AWS pipeline)
+
+The rules improve themselves from your training signals. Apply a Gmail label
+beginning with `+` or `-` to a thread:
+
+- **`+x` on thread T** — "the rules should have labeled T with `x`; refine them
+  so future mail like T gets `x`."
+- **`-x` on thread T** — "the rules wrongly applied `x` to T; refine them so
+  future mail like T does not."
+
+Every 6 hours, a **scheduled AWS pipeline** (EventBridge → Step Functions →
+Lambda + Fargate) scans for these markers and, when it finds any:
+
+1. **scan** (Lambda) — exports `feedback.json` + a fresh regression corpus.
+2. **refine** (Fargate) — Claude Code, running headless under the project
+   owner's **Claude Max subscription** (no per-token API cost), edits
+   `gmail_cleanup/rules.yaml`, regenerates the Apps Script, runs the pytest
+   regression gate, opens a PR, and **auto-merges** it on green. Claude is
+   contained: it has no Gmail credentials and can only touch an allow-list of
+   rule files.
+3. **deploy** (Lambda) — pushes the refreshed rules to the live Apps Script
+   labeler.
+4. **cleanup** (Lambda) — applies the resolved `+`/`-` labels to Gmail and
+   removes the marker labels.
+
+It runs entirely on AWS — there is no GitHub Actions involvement. Cost is
+negligible (a few short Fargate runs per day; no NAT gateway; Claude is free
+under the subscription). All credentials live in AWS SSM Parameter Store and are
+never written to disk or committed. See **`docs/aws-bootstrap.md`** for the
+one-time setup (SSM secrets, `claude setup-token`, container image, and the
+CloudFormation stack in `infra/`).
+
+---
+
 ## Apps Script deployment
+
+> The autonomous loop deploys rule changes **automatically** via the Apps Script
+> API (fileless, no clasp) — see `docs/aws-bootstrap.md`. The clasp steps below
+> are for the initial project creation and manual local pushes.
 
 ### One-time setup
 

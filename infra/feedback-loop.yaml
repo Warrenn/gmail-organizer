@@ -1,0 +1,601 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Scheduled autonomous Gmail feedback-loop pipeline. EventBridge Scheduler (6h)
+  -> Step Functions -> scan Lambda -> Fargate refine task (Claude under the Max
+  subscription token) -> deploy + cleanup Lambdas. No NAT (public subnet + public
+  IP). All secrets in SSM. Email-derived artifacts live only in an encrypted S3
+  bucket. The refine task role deliberately has NO Gmail / gmail-token access.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  ImageUri:
+    Type: String
+    Description: ECR image URI for the Fargate refine task (e.g. <acct>.dkr.ecr.eu-west-1.amazonaws.com/gmail-organizer-refine:latest).
+
+  AppsScriptId:
+    Type: String
+    Description: Target Google Apps Script project ID the deploy Lambda pushes to.
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Public subnet(s) for the Fargate task (must auto-assign / reach a public IP via an internet gateway — NO NAT).
+
+  RepoSlug:
+    Type: String
+    Default: Warrenn/gmail-organizer
+    Description: owner/repo the refine task clones, pushes, and PRs against.
+
+  RepoRef:
+    Type: String
+    Default: main
+    Description: Branch the refine task bases refinements on.
+
+  SsmPrefix:
+    Type: String
+    Default: /cleanup-gmail
+    Description: SSM namespace holding the secrets (no trailing slash).
+
+  CorpusPerLabel:
+    Type: Number
+    Default: 3
+    Description: Threads sampled per label when the scan Lambda builds the regression corpus.
+
+  ScheduleExpression:
+    Type: String
+    Default: rate(6 hours)
+    Description: EventBridge Scheduler cadence for the pipeline.
+
+  ScheduleEnabled:
+    Type: String
+    AllowedValues: ["ENABLED", "DISABLED"]
+    Default: ENABLED
+    Description: Set DISABLED for a dormant/soft-launch deploy; flip to ENABLED later.
+
+  LambdaScanKey:
+    Type: String
+    Default: lambdas/scan.zip
+    Description: S3 key of the scan Lambda deployment package within the code bucket.
+
+  LambdaDeployKey:
+    Type: String
+    Default: lambdas/deploy.zip
+    Description: S3 key of the deploy Lambda deployment package.
+
+  LambdaCleanupKey:
+    Type: String
+    Default: lambdas/cleanup.zip
+    Description: S3 key of the cleanup Lambda deployment package.
+
+  LambdaCodeBucket:
+    Type: String
+    Default: ""
+    Description: >-
+      S3 bucket holding the Lambda .zip packages. Leave empty to use the
+      artifact bucket this stack creates (you must upload the zips to it before
+      the Lambdas can be invoked).
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: CloudWatch log retention for all components.
+
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional email to subscribe to the failure-alarm SNS topic.
+
+Conditions:
+  UseArtifactBucketForCode: !Equals [!Ref LambdaCodeBucket, ""]
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # === Encrypted S3 artifact bucket =======================================
+  # Holds the transient email-derived artifacts (feedback.json, corpus.json,
+  # feedback_resolved.json, regenerated apps-script files). Encrypted, private,
+  # versioned off, with a short lifecycle expiry so nothing lingers.
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-artifacts-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-artifacts
+            Status: Enabled
+            ExpirationInDays: 7
+            NoncurrentVersionExpirationInDays: 1
+
+  ArtifactBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt ArtifactBucket.Arn
+              - !Sub "${ArtifactBucket.Arn}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
+
+  # === CloudWatch log groups ==============================================
+  ScanLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-scan"
+      RetentionInDays: !Ref LogRetentionDays
+  DeployLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-deploy"
+      RetentionInDays: !Ref LogRetentionDays
+  CleanupLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-cleanup"
+      RetentionInDays: !Ref LogRetentionDays
+  RefineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${AWS::StackName}-refine"
+      RetentionInDays: !Ref LogRetentionDays
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${AWS::StackName}"
+      RetentionInDays: !Ref LogRetentionDays
+
+  # === IAM: Lambda roles (least privilege per function) ===================
+  # Each Lambda reads ONLY the SSM secrets it needs and the artifact bucket.
+
+  ScanLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-scan-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: scan
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt ScanLogGroup.Arn
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/gmail-token-json"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+
+  DeployLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-deploy-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt DeployLogGroup.Arn
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/apps-script-token-json"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+
+  CleanupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-cleanup-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: cleanup
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt CleanupLogGroup.Arn
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/gmail-token-json"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+
+  # === Lambdas ============================================================
+  ScanLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: ScanLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-scan"
+      Runtime: python3.12
+      Handler: lambdas.scan.handler.handler
+      Timeout: 300
+      MemorySize: 512
+      Role: !GetAtt ScanLambdaRole.Arn
+      Code:
+        S3Bucket: !If [UseArtifactBucketForCode, !Ref ArtifactBucket, !Ref LambdaCodeBucket]
+        S3Key: !Ref LambdaScanKey
+      Environment:
+        Variables:
+          ARTIFACT_BUCKET: !Ref ArtifactBucket
+          SSM_PREFIX: !Ref SsmPrefix
+          CORPUS_PER_LABEL: !Ref CorpusPerLabel
+
+  DeployLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: DeployLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-deploy"
+      Runtime: python3.12
+      Handler: lambdas.deploy.handler.handler
+      Timeout: 120
+      MemorySize: 256
+      Role: !GetAtt DeployLambdaRole.Arn
+      Code:
+        S3Bucket: !If [UseArtifactBucketForCode, !Ref ArtifactBucket, !Ref LambdaCodeBucket]
+        S3Key: !Ref LambdaDeployKey
+      Environment:
+        Variables:
+          ARTIFACT_BUCKET: !Ref ArtifactBucket
+          SSM_PREFIX: !Ref SsmPrefix
+          APPS_SCRIPT_ID: !Ref AppsScriptId
+
+  CleanupLambda:
+    Type: AWS::Lambda::Function
+    DependsOn: CleanupLogGroup
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-cleanup"
+      Runtime: python3.12
+      Handler: lambdas.cleanup.handler.handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt CleanupLambdaRole.Arn
+      Code:
+        S3Bucket: !If [UseArtifactBucketForCode, !Ref ArtifactBucket, !Ref LambdaCodeBucket]
+        S3Key: !Ref LambdaCleanupKey
+      Environment:
+        Variables:
+          ARTIFACT_BUCKET: !Ref ArtifactBucket
+          SSM_PREFIX: !Ref SsmPrefix
+
+  # === ECS cluster + Fargate refine task ==================================
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${AWS::StackName}-cluster"
+
+  # Execution role: pull the image + write logs (used by the ECS agent).
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-refine-exec-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+  # Task role: the refine CONTAINER's identity. Deliberately scoped to ONLY
+  # the Claude OAuth + GitHub tokens and the artifact bucket. It has NO access
+  # to the gmail-token / apps-script-token params — Claude can never reach a
+  # mailbox or push to Google. This is the containment boundary.
+  RefineTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-refine-task-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: refine
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/claude-code-oauth-token"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/github-token"
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+
+  RefineTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${AWS::StackName}-refine"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "1024"
+      Memory: "2048"
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt RefineTaskRole.Arn
+      ContainerDefinitions:
+        - Name: refine
+          Image: !Ref ImageUri
+          Essential: true
+          Environment:
+            - Name: ARTIFACT_BUCKET
+              Value: !Ref ArtifactBucket
+            - Name: SSM_PREFIX
+              Value: !Ref SsmPrefix
+            - Name: REPO_SLUG
+              Value: !Ref RepoSlug
+            - Name: REPO_REF
+              Value: !Ref RepoRef
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref RefineLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: refine
+
+  # === Step Functions state machine =======================================
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-sfn-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: states.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: sfn
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt ScanLambda.Arn
+                  - !GetAtt DeployLambda.Arn
+                  - !GetAtt CleanupLambda.Arn
+              # Run the Fargate task synchronously (.sync) — needs RunTask +
+              # the managed EventBridge rule perms, and PassRole for the task
+              # + execution roles.
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref RefineTaskDefinition
+              - Effect: Allow
+                Action: [ecs:StopTask, ecs:DescribeTasks]
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt TaskExecutionRole.Arn
+                  - !GetAtt RefineTaskRole.Arn
+              - Effect: Allow
+                Action: [events:PutTargets, events:PutRule, events:DescribeRule]
+                Resource: !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/StepFunctionsGetEventsForECSTaskRule"
+              - Effect: Allow
+                Action: [logs:CreateLogDelivery, logs:GetLogDelivery, logs:UpdateLogDelivery, logs:DeleteLogDelivery, logs:ListLogDeliveries, logs:PutResourcePolicy, logs:DescribeResourcePolicies, logs:DescribeLogGroups]
+                Resource: "*"
+
+  FeedbackLoopStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "${AWS::StackName}-feedback-loop"
+      RoleArn: !GetAtt StateMachineRole.Arn
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
+      DefinitionSubstitutions:
+        ScanArn: !GetAtt ScanLambda.Arn
+        DeployArn: !GetAtt DeployLambda.Arn
+        CleanupArn: !GetAtt CleanupLambda.Arn
+        ClusterArn: !GetAtt EcsCluster.Arn
+        TaskDefArn: !Ref RefineTaskDefinition
+        Subnets: !Join [",", !Ref SubnetIds]
+      DefinitionString: !Sub |
+        {
+          "Comment": "Autonomous Gmail feedback loop: scan -> (markers?) -> refine -> deploy -> cleanup",
+          "StartAt": "Scan",
+          "States": {
+            "Scan": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${!ScanArn}" },
+              "ResultSelector": { "hasMarkers.$": "$.Payload.hasMarkers" },
+              "ResultPath": "$.scan",
+              "Next": "HasMarkers"
+            },
+            "HasMarkers": {
+              "Type": "Choice",
+              "Choices": [
+                { "Variable": "$.scan.hasMarkers", "BooleanEquals": true, "Next": "Refine" }
+              ],
+              "Default": "NoMarkers"
+            },
+            "NoMarkers": {
+              "Type": "Succeed"
+            },
+            "Refine": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster": "${!ClusterArn}",
+                "TaskDefinition": "${!TaskDefArn}",
+                "LaunchType": "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": ["${!Subnets}"],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                }
+              },
+              "ResultPath": "$.refine",
+              "Next": "Deploy"
+            },
+            "Deploy": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${!DeployArn}" },
+              "ResultPath": "$.deploy",
+              "Next": "Cleanup"
+            },
+            "Cleanup": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::lambda:invoke",
+              "Parameters": { "FunctionName": "${!CleanupArn}" },
+              "ResultPath": "$.cleanup",
+              "End": true
+            }
+          }
+        }
+
+  # === EventBridge Scheduler (6h) =========================================
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-scheduler-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+      Policies:
+        - PolicyName: start-execution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !Ref FeedbackLoopStateMachine
+
+  Schedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-6h"
+      State: !Ref ScheduleEnabled
+      ScheduleExpression: !Ref ScheduleExpression
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: !Ref FeedbackLoopStateMachine
+        RoleArn: !GetAtt SchedulerRole.Arn
+
+  # === Failure alarm ======================================================
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-failures"
+
+  AlarmEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+
+  ExecutionsFailedAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-execution-failed"
+      AlarmDescription: A feedback-loop Step Functions execution failed.
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref FeedbackLoopStateMachine
+      Statistic: Sum
+      Period: 21600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref AlarmTopic
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  ArtifactBucketName:
+    Description: Encrypted S3 bucket for transient pipeline artifacts (and, by default, the Lambda code zips).
+    Value: !Ref ArtifactBucket
+  StateMachineArn:
+    Description: Start an execution against this ARN to run the pipeline on demand.
+    Value: !Ref FeedbackLoopStateMachine
+  RefineTaskRoleArn:
+    Description: The contained refine task role (OAuth + GitHub + S3 only; no Gmail).
+    Value: !GetAtt RefineTaskRole.Arn
+  FailureTopicArn:
+    Description: SNS topic that fires on a failed pipeline execution.
+    Value: !Ref AlarmTopic
+  ScanLogGroupName:
+    Value: !Ref ScanLogGroup
+  RefineLogGroupName:
+    Value: !Ref RefineLogGroup

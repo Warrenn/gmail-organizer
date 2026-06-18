@@ -85,6 +85,10 @@ def _run(subcmd, *, cwd, stub, env=None):
     full_env["CLAUDE_MARKER"] = str(stub["claude_marker"])
     # Isolate Actions-only env: only tests that pass it explicitly get it.
     full_env.pop("GITHUB_OUTPUT", None)
+    # Refine must authenticate via the subscription OAuth token, never an API
+    # key. Drop any inherited ANTHROPIC_API_KEY so the guard only trips when a
+    # test sets it explicitly (mirrors the clean Fargate/CI environment).
+    full_env.pop("ANTHROPIC_API_KEY", None)
     full_env.setdefault("DRY_RUN", "true")
     if env:
         full_env.update(env)
@@ -227,6 +231,37 @@ def test_refine_runs_claude_and_guards_push(git_repo, stub_bin):
     # under DRY_RUN the push and pr create are logged, never executed
     assert "[dry-run]" in (r.stdout + r.stderr)
     assert "pr create" not in gh_calls
+
+
+def test_refine_authenticates_with_subscription_token_not_api_key(git_repo, stub_bin):
+    """Refine must use the Max-subscription OAuth token (CLAUDE_CODE_OAUTH_TOKEN),
+    pulled from SSM, and must NOT set ANTHROPIC_API_KEY (which bills per-token)."""
+    prompt = git_repo / "prompt.md"
+    prompt.write_text("refine\n")
+    env_dump = git_repo.parent / "claude_auth_seen.txt"
+    _write_exec(
+        stub_bin["bindir"] / "claude",
+        f'{{ echo "OAUTH=${{CLAUDE_CODE_OAUTH_TOKEN:-<unset>}}"; '
+        f'echo "APIKEY=${{ANTHROPIC_API_KEY:-<unset>}}"; }} > "{env_dump}"\n'
+        'touch "$CLAUDE_MARKER"\n',
+    )
+    r = _run("refine", cwd=git_repo, stub=stub_bin, env={"PROMPT_FILE": str(prompt)})
+    assert r.returncode == 0, r.stderr
+    seen = env_dump.read_text()
+    assert "OAUTH=dummy-value" in seen, "must export the subscription token pulled from SSM"
+    assert "APIKEY=<unset>" in seen, "must NOT set ANTHROPIC_API_KEY"
+
+
+def test_refine_refuses_when_api_key_is_present(git_repo, stub_bin):
+    """If ANTHROPIC_API_KEY is set, refine must refuse to run — otherwise Claude
+    Code would bill the per-token API instead of the subscription."""
+    prompt = git_repo / "prompt.md"
+    prompt.write_text("refine\n")
+    r = _run("refine", cwd=git_repo, stub=stub_bin,
+             env={"PROMPT_FILE": str(prompt), "ANTHROPIC_API_KEY": "sk-should-not-be-used"})
+    assert r.returncode != 0, "refine must fail fast when an API key is present"
+    assert not stub_bin["claude_marker"].exists(), "claude must not be invoked"
+    assert "ANTHROPIC_API_KEY" in (r.stdout + r.stderr)
 
 
 # --------------------------------------------------------------------------

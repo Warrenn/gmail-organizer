@@ -17,7 +17,7 @@
 #
 # Usage:
 #   feedback-loop.sh scan       load Gmail token (env, from SSM), scan for +X/-X markers
-#   feedback-loop.sh refine     pull Anthropic key, branch, run Claude, push, PR
+#   feedback-loop.sh refine     pull subscription OAuth token, branch, run Claude, push, PR
 #   feedback-loop.sh verify     diff allow-list check, optional auto-merge
 #   feedback-loop.sh heartbeat  file a loop-broken issue for a failed run
 #   feedback-loop.sh all        scan; if markers, refine then verify (local default)
@@ -43,7 +43,10 @@ set -euo pipefail
 : "${SCAN_RESULT:=}" ; : "${REFINE_RESULT:=}" ; : "${VERIFY_RESULT:=}"
 
 # Files Claude is permitted to modify. The verify phase rejects anything else.
-ALLOWED_RE='^(gmail_cleanup/rules\.yaml|tests/(corpus|corpus_disagreements)\.json|apps-script/(Rules|Classifier)\.gs|feedback_resolved\.json)$'
+# feedback_resolved.json is intentionally absent: it is no longer committed
+# (it ships to the S3 artifact bucket — see container/refine-entrypoint.sh and
+# STRATEGY.md Q2), so it must never appear in a refine commit/diff.
+ALLOWED_RE='^(gmail_cleanup/rules\.yaml|tests/(corpus|corpus_disagreements)\.json|apps-script/(Rules|Classifier)\.gs)$'
 
 # --- Helpers ---------------------------------------------------------------
 log()  { printf '%s\n' "$*" >&2; }
@@ -129,14 +132,20 @@ cmd_scan() {
 }
 
 cmd_refine() {
-  # Anthropic key ONLY — no Gmail creds in this phase's environment. Drop the
-  # key when this function returns so it cannot linger into a later in-process
-  # phase during `all`.
-  trap 'unset ANTHROPIC_API_KEY' RETURN
-  local key
-  key=$(ssm "$SSM_PREFIX/anthropic-api-key")
-  mask "$key"
-  export ANTHROPIC_API_KEY="$key"
+  # Claude authenticates against the user's Max SUBSCRIPTION via a long-lived
+  # OAuth token (CLAUDE_CODE_OAUTH_TOKEN), pulled from SSM — NOT a per-token API
+  # key. ANTHROPIC_API_KEY takes precedence inside Claude Code and would silently
+  # bill the API, so refuse to run if it is set rather than bill the wrong way.
+  [ -z "${ANTHROPIC_API_KEY:-}" ] || \
+    die "ANTHROPIC_API_KEY is set — refusing to run so usage bills the subscription, not the API. Unset it."
+  # No Gmail creds in this phase. Drop the token when this function returns so it
+  # cannot linger into a later in-process phase during `all`.
+  trap 'unset CLAUDE_CODE_OAUTH_TOKEN' RETURN
+  local token
+  token=$(ssm "$SSM_PREFIX/claude-code-oauth-token")
+  mask "$token"
+  [ -n "$token" ] || die "empty claude-code-oauth-token from SSM"
+  export CLAUDE_CODE_OAUTH_TOKEN="$token"
 
   local branch="${BRANCH_NAME}"
   if [ -z "$branch" ]; then

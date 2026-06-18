@@ -1,181 +1,78 @@
-# AWS bootstrap — one-time setup for the feedback-loop workflows
+# AWS bootstrap — the scheduled feedback-loop pipeline
 
-The autonomous feedback loop runs in GitHub Actions and pulls its
-credentials from AWS Systems Manager Parameter Store via short-lived
-OIDC credentials. This file walks you through the one-time setup. Once
-done, the workflow runs without any further AWS work from you.
+The autonomous `+X` / `-X` feedback loop runs entirely on a **6-hourly AWS
+pipeline** — there is no longer any GitHub Actions involvement. This file is
+the one-time setup: create the SSM secrets, mint the Claude subscription token,
+deploy the CloudFormation stack, and (optionally) tear it all down.
+
+## Architecture at a glance
+
+```
+EventBridge Scheduler (every 6h, eu-west-1)
+      │
+      ▼
+Step Functions: feedback-loop
+      ├─ (1) Lambda  scan     — Gmail token from SSM → feedback-scan + corpus-build
+      │                          → upload feedback.json/corpus.json to S3
+      │                          → returns hasMarkers (Choice: stop if false)
+      ├─ (2) Fargate refine    — Claude (Max subscription) refines rules, opens +
+      │                          auto-merges the PR; uploads feedback_resolved.json
+      │                          and the regenerated apps-script files to S3
+      ├─ (3a) Lambda deploy     — pushes the refreshed Rules.gs/Classifier.gs to the
+      │                          live Google Apps Script labeler
+      └─ (3b) Lambda cleanup    — applies the resolved +/- markers to Gmail, deletes
+                                 marker labels (reads feedback_resolved.json from S3)
+```
+
+**Cost:** Fargate bills per-second only while the (short) refine task runs;
+Lambda / Step Functions / EventBridge / S3 are free-tier or pennies; the only
+standing cost is the ECR image (~$0.10/GB-mo). **No NAT gateway** (the refine
+task runs in a public subnet with a public IP). Claude is **$0 extra** — it
+bills against your existing Max subscription, not the per-token API.
+
+**Secrets:** all credentials are SSM SecureStrings, injected as runtime
+environment variables — never written to disk, never committed. Email-derived
+artifacts (`feedback.json`, `corpus.json`, `feedback_resolved.json`) live only
+transiently in an encrypted S3 bucket and are never committed to the repo.
+
+---
 
 ## What you'll create
 
-1. A GitHub OIDC **IAM identity provider** in your AWS account (one per
-   account, reusable across all your GitHub repos).
-2. An assumable **IAM role** scoped to this repo, with permission to
-   read the Parameter Store params under `/cleanup-gmail/`.
-3. **SecureString** parameters under `/cleanup-gmail/`: `anthropic-api-key`
-   and `gmail-token-json` (required by the feedback-loop), plus
-   `apps-script-token-json` (only for `deploy.yml`). Credentials live in SSM
-   only — never in files.
+1. **SSM SecureString parameters** under `/cleanup-gmail/`:
+   - `gmail-token-json` — Gmail OAuth token (scan + cleanup).
+   - `apps-script-token-json` — Apps Script OAuth token, scope `script.projects`
+     (deploy).
+   - `claude-code-oauth-token` — **NEW.** Claude Max subscription token (refine).
+   - `github-token` — **NEW.** A GitHub token the refine task uses to clone,
+     push the branch, and open + auto-merge the PR.
+   - `anthropic-api-key` is **RETIRED** — see "Retiring the API key" below.
+2. An **ECR repository** + the built **refine container image**.
+3. The **CloudFormation stack** (`infra/`) that creates the S3 bucket, the three
+   Lambdas, the ECS cluster + Fargate task, the Step Functions state machine,
+   the EventBridge schedule, the IAM roles, and the CloudWatch log groups +
+   failure alarm.
 
-All steps below assume the AWS region `eu-west-1` and account ID
-`<YOUR_ACCOUNT_ID>` — substitute your values. The Parameter Store
-namespace `/cleanup-gmail/` is hardcoded into the workflow YAMLs, so
-keep it.
-
----
-
-## Step 1 — Create the GitHub OIDC identity provider
-
-Skip this step if you've already set up GitHub OIDC for another repo in
-the same AWS account; the provider is account-wide.
-
-### Console path
-
-1. AWS Console → **IAM** → **Identity providers** → **Add provider**.
-2. Provider type: **OpenID Connect**.
-3. Provider URL: `https://token.actions.githubusercontent.com`. Click
-   **Get thumbprint**.
-4. Audience: `sts.amazonaws.com`.
-5. Click **Add provider**.
-
-### CLI alternative
-
-```sh
-aws iam create-open-id-connect-provider \
-  --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
-```
-
-(The thumbprint is GitHub's well-known OIDC certificate fingerprint; it
-may rotate — fetch the latest from
-https://github.blog/changelog/2022-01-13-github-actions-update-on-oidc-based-deployments-to-aws/
-or compute via `openssl s_client`.)
+All steps assume region `eu-west-1` and account ID `<YOUR_ACCOUNT_ID>` —
+substitute your values. The `/cleanup-gmail/` SSM namespace is referenced by the
+stack parameters; keep it (or override `SsmPrefix`).
 
 ---
 
-## Step 2 — Create the assumable IAM role
-
-This role is what the GitHub Action assumes. Trust policy limits which
-repo (and which workflows) can assume it; permission policy limits
-what it can do.
-
-### Trust policy (`trust-policy.json`)
-
-Save this locally; you'll attach it on role creation. Substitute
-`<YOUR_ACCOUNT_ID>`.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<YOUR_ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:Warrenn/gmail-organizer:*"
-        }
-      }
-    }
-  ]
-}
-```
-
-The `StringLike` on `sub` restricts assumption to workflows running in
-the `Warrenn/gmail-organizer` repo (any branch, any workflow). If you
-want to scope it further to a specific workflow, replace the wildcard
-with `repo:Warrenn/gmail-organizer:ref:refs/heads/main` or similar.
-
-### Permission policy (`permission-policy.json`)
-
-Substitute `<YOUR_ACCOUNT_ID>` and `<YOUR_REGION>` (e.g. `eu-west-1`).
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["ssm:GetParameter", "ssm:GetParameters"],
-      "Resource": [
-        "arn:aws:ssm:<YOUR_REGION>:<YOUR_ACCOUNT_ID>:parameter/cleanup-gmail/*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["kms:Decrypt"],
-      "Resource": "*",
-      "Condition": {
-        "StringLike": {
-          "kms:EncryptionContext:PARAMETER_ARN": "arn:aws:ssm:<YOUR_REGION>:<YOUR_ACCOUNT_ID>:parameter/cleanup-gmail/*"
-        }
-      }
-    }
-  ]
-}
-```
-
-The KMS clause lets the role decrypt SecureString parameters; the
-condition scopes it to our namespace only.
-
-### Create the role
-
-```sh
-aws iam create-role \
-  --role-name gmail-organizer-loop \
-  --assume-role-policy-document file://trust-policy.json
-
-aws iam put-role-policy \
-  --role-name gmail-organizer-loop \
-  --policy-name gmail-organizer-loop-policy \
-  --policy-document file://permission-policy.json
-```
-
-Note the resulting role ARN — you'll paste it into the workflow
-YAMLs (or set it as a GitHub repo variable, see below).
-
----
-
-## Step 3 — Populate Parameter Store
-
-SecureString params under `/cleanup-gmail/`. The feedback-loop needs
-`anthropic-api-key` and `gmail-token-json`; `apps-script-token-json` is only
-for `deploy.yml`. There is no `gmail-credentials-json` param — credentials are
-never persisted to a file.
-
-### `/cleanup-gmail/anthropic-api-key`
-
-Your Anthropic API key. Create one at
-https://console.anthropic.com/settings/keys.
-
-```sh
-aws ssm put-parameter \
-  --name /cleanup-gmail/anthropic-api-key \
-  --value 'sk-ant-...' \
-  --type SecureString \
-  --description 'Anthropic API key for the feedback-loop GitHub Action'
-```
+## Step 1 — Populate Parameter Store
 
 ### `/cleanup-gmail/gmail-token-json`
 
-The authorized-user token. This is the **only** Gmail secret the runtime
-needs — it self-contains the client id/secret and refresh token. **Credentials
-are never written to disk**: the `mint-token` command runs the OAuth consent
-flow and prints the token to stdout, which you pipe straight into SSM. Nothing
-touches the filesystem.
+The authorized-user Gmail token (scopes `gmail.modify`, `gmail.labels`). This
+is the **only** Gmail secret the runtime needs — it self-contains the client
+id/secret and refresh token. **Credentials are never written to disk**: the
+`mint-token` command runs the OAuth consent flow and prints the token to stdout,
+which you pipe straight into SSM.
 
-You need a **Desktop** OAuth client JSON downloaded from Google Cloud Console
-(APIs & Services → Credentials). Then, in a checkout with the venv active:
+You need a **Desktop** OAuth client JSON from Google Cloud Console (APIs &
+Services → Credentials). Then, in a checkout with the venv active:
 
 ```sh
-# Reads the downloaded client config in memory, runs the browser consent,
-# and streams the resulting token straight into SSM — no token file is created.
 python -m gmail_cleanup mint-token \
     --client-secret ~/Downloads/client_secret_*.json \
   | aws ssm put-parameter \
@@ -184,23 +81,15 @@ python -m gmail_cleanup mint-token \
       --value file:///dev/stdin
 ```
 
-> **OAuth refresh tokens generally don't rotate**, but Google can
-> invalidate them if the account does a security review or if the user
-> revokes the grant. If that happens, the workflow fails with a 401;
-> re-run the `mint-token | put-parameter --overwrite` pipeline above to
-> refresh the SSM value. The access-token refresh that happens on every
-> run is in-memory only and is never persisted.
+> OAuth refresh tokens generally don't rotate, but Google can invalidate them on
+> a security review or if you revoke the grant. If that happens, re-run the
+> `mint-token | put-parameter --overwrite` pipeline. The per-run access-token
+> refresh is in-memory only and is never persisted.
 
-> **No `gmail-credentials-json` parameter is required.** The OAuth client
-> config is only needed at mint time (passed via `--client-secret`); the
-> runtime never uses it. Delete the downloaded client JSON afterwards if you
-> want nothing sensitive left on disk.
+### `/cleanup-gmail/apps-script-token-json`
 
-### `/cleanup-gmail/apps-script-token-json`  (only for `deploy.yml`)
-
-A second OAuth token scoped **only** to `script.projects`, used by `deploy.yml`
-to push the regenerated Apps Script via the API (no clasp, no files). Mint it
-with the same fileless pipeline, passing `--scopes apps-script`:
+A second OAuth token scoped **only** to `script.projects`, used by the deploy
+Lambda to push the regenerated Apps Script via the API (no clasp, no files):
 
 ```sh
 python -m gmail_cleanup mint-token --scopes apps-script \
@@ -210,66 +99,189 @@ python -m gmail_cleanup mint-token --scopes apps-script \
 ```
 
 Prerequisites for the Apps Script API (both required, as the script's owner):
-- Enable the **Apps Script API** in the GCP project:
+- Enable the **Apps Script API**:
   `https://console.cloud.google.com/apis/library/script.googleapis.com?project=<PROJECT_ID>`
 - Turn on the per-user toggle: `https://script.google.com/home/usersettings`
 
-> There is **no** `clasp-rc-json` parameter — clasp was replaced by the
-> Apps Script API so no credential file is ever written, on the runner or locally.
+### `/cleanup-gmail/claude-code-oauth-token`  (NEW — the subscription token)
+
+This is what makes Claude refine **free** under your Max subscription instead of
+billing the per-token API. Generate it with the Claude Code CLI on your own
+machine (it opens a browser to authorize against your subscription):
+
+```sh
+# One-time, interactive. Prints a long-lived OAuth token to stdout.
+claude setup-token
+```
+
+Pipe (or paste) the resulting token straight into SSM — never save it to a file:
+
+```sh
+claude setup-token \
+  | aws ssm put-parameter \
+      --name /cleanup-gmail/claude-code-oauth-token \
+      --type SecureString \
+      --value file:///dev/stdin
+```
+
+> The refine task asserts `ANTHROPIC_API_KEY` is **unset** before invoking
+> `claude` (the API key takes precedence inside Claude Code and would silently
+> re-introduce per-token billing). The pipeline never sets it.
+>
+> Rotate this token roughly **annually** (or whenever Claude Code prompts that
+> it has expired): re-run `claude setup-token | put-parameter --overwrite`.
+
+### `/cleanup-gmail/github-token`  (NEW)
+
+A GitHub token the refine task uses to clone the repo, push the refinement
+branch, and open + auto-merge the PR. A **fine-grained personal access token**
+(or a GitHub App installation token) scoped to `Warrenn/gmail-organizer` with
+**Contents: read/write** and **Pull requests: read/write** is sufficient.
+
+```sh
+aws ssm put-parameter \
+  --name /cleanup-gmail/github-token \
+  --type SecureString \
+  --value 'github_pat_...' \
+  --description 'GitHub token for the Fargate refine task (clone/push/PR/merge)'
+```
+
+> This token is granted **only** to the refine task role — not to any Lambda.
+> Rotate per your PAT expiry policy with `put-parameter --overwrite`.
+
+### Retiring the API key
+
+The old `/cleanup-gmail/anthropic-api-key` is no longer used by anything. Delete
+it so it can't be accidentally reintroduced:
+
+```sh
+aws ssm delete-parameter --name /cleanup-gmail/anthropic-api-key
+```
 
 ---
 
-## Step 4 — Configure GitHub repo
+## Step 2 — Build and push the refine container image
 
-Three repository variables and zero secrets (everything sensitive lives
-in AWS now).
+The CloudFormation stack references an ECR image URI. Create the repo, build the
+image (from `container/Dockerfile`), and push it.
 
-In `Settings → Secrets and variables → Actions → Variables`:
+```sh
+ACCOUNT=<YOUR_ACCOUNT_ID>
+REGION=eu-west-1
+REPO=gmail-organizer-refine
 
-| Variable name           | Value                                                                  |
-|-------------------------|------------------------------------------------------------------------|
-| `AWS_ROLE_TO_ASSUME`    | The role ARN from Step 2 (e.g. `arn:aws:iam::123456789012:role/gmail-organizer-loop`) |
-| `AWS_REGION`            | e.g. `eu-west-1`                                                       |
-| `LOOP_AUTO_MERGE`       | `false` for soft launch. Set to `true` later to enable auto-merge.     |
-| `APPS_SCRIPT_ID`        | The Apps Script project ID `deploy.yml` pushes to (Project Settings → Script ID). |
+aws ecr create-repository --repository-name "$REPO" --region "$REGION"
 
-Workflow files reference these via `${{ vars.AWS_ROLE_TO_ASSUME }}` etc.
-— no rotation needed and they're public-readable, which is fine since
-they're just ARNs and region strings.
+aws ecr get-login-password --region "$REGION" \
+  | docker login --username AWS --password-stdin "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
+
+# Build for the Fargate CPU architecture you'll run on (X86_64 by default).
+docker build --platform linux/amd64 -f container/Dockerfile \
+  -t "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$REPO:latest" .
+
+docker push "$ACCOUNT.dkr.ecr.$REGION.amazonaws.com/$REPO:latest"
+```
+
+> The image contains **no credentials** — it pulls everything from SSM at
+> runtime. Rebuild + push when `scripts/feedback-loop.sh`,
+> `container/refine-entrypoint.sh`, or the pinned tool versions change.
 
 ---
 
-## Step 5 — Smoke test
+## Step 3 — Deploy the CloudFormation stack
 
-Manually trigger the feedback-loop workflow (Actions tab → feedback-loop
-→ Run workflow → main branch). The `scan` job should:
+The stack lives in `infra/`. It needs your account/region, the ECR image URI,
+the target Apps Script project ID, and the **public subnet(s)** the Fargate task
+runs in (any subnet that auto-assigns a public IP / sits behind an internet
+gateway — no NAT).
 
-1. Successfully assume the role via OIDC (look for `Configure AWS
-   credentials` step success).
-2. Pull `gmail-credentials-json` and `gmail-token-json`, write them to
-   the runner, and run `python -m gmail_cleanup feedback-scan`.
-3. Exit cleanly with `feedback: 0 markers, 0 threads → feedback.json`
-   (because you haven't placed any `+X` / `-X` labels yet).
+```sh
+aws cloudformation deploy \
+  --region eu-west-1 \
+  --stack-name gmail-organizer-loop \
+  --template-file infra/feedback-loop.yaml \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides \
+      ImageUri="$ACCOUNT.dkr.ecr.eu-west-1.amazonaws.com/gmail-organizer-refine:latest" \
+      AppsScriptId=<APPS_SCRIPT_PROJECT_ID> \
+      SubnetIds=subnet-aaaa,subnet-bbbb \
+      RepoSlug=Warrenn/gmail-organizer
+```
 
-The `refine` job is skipped when there are no markers. The workflow run
-should be all green.
+Validate / dry-run before deploying:
 
-If anything fails:
-- **OIDC error**: check the trust policy's `sub` claim matches the repo
-  exactly; check the OIDC provider exists.
-- **AccessDenied on SSM**: check the role's permission policy ARN
-  patterns; check the param exists under the exact name.
-- **`token.json` 401**: refresh as noted in Step 3.
+```sh
+aws cloudformation validate-template --template-body file://infra/feedback-loop.yaml
+cfn-lint infra/feedback-loop.yaml
+```
+
+See `infra/README.md` for the full parameter list and the IAM least-privilege
+notes (in particular: the refine task role gets the OAuth + GitHub + S3 access
+but **no** Gmail / `gmail-token` access — Claude can never reach a mailbox).
+
+---
+
+## Step 4 — Smoke test
+
+Trigger one Step Functions execution manually instead of waiting for the
+schedule:
+
+```sh
+aws stepfunctions start-execution \
+  --state-machine-arn <arn-from-stack-outputs>
+```
+
+With no `+X` / `-X` markers in your mailbox, the `scan` step returns
+`hasMarkers: false` and the Choice stops the execution cleanly — no refine, no
+Fargate cost. To exercise the full chain, apply a `+sometestlabel` to a thread,
+then start an execution and watch:
+
+1. `scan` uploads `feedback.json` + `corpus.json` to the S3 bucket.
+2. `refine` (Fargate) opens and auto-merges a PR, uploads
+   `feedback_resolved.json`.
+3. `deploy` pushes the refreshed rules to the live Apps Script labeler.
+4. `cleanup` applies the resolved marker to Gmail and deletes the marker label.
+
+If anything fails, the state machine surfaces the failing step and the
+CloudWatch failure alarm fires. Logs are in the per-component CloudWatch log
+groups (see stack outputs).
+
+---
+
+## Teardown
+
+To remove everything:
+
+```sh
+# 1. Empty + delete the artifact bucket's objects first (CloudFormation won't
+#    delete a non-empty bucket).
+aws s3 rm s3://<artifact-bucket-name> --recursive
+
+# 2. Delete the stack (removes Lambdas, ECS, Step Functions, schedule, IAM,
+#    log groups, the bucket, the failure alarm).
+aws cloudformation delete-stack --stack-name gmail-organizer-loop
+aws cloudformation wait stack-delete-complete --stack-name gmail-organizer-loop
+
+# 3. Delete the ECR repo (images are not managed by the stack).
+aws ecr delete-repository --repository-name gmail-organizer-refine --force
+
+# 4. (Optional) Remove the SSM secrets if you're fully decommissioning.
+for p in gmail-token-json apps-script-token-json claude-code-oauth-token github-token; do
+  aws ssm delete-parameter --name "/cleanup-gmail/$p"
+done
+```
 
 ---
 
 ## Future maintenance
 
-- **Rotate the Anthropic API key**: create a new key in the Anthropic
-  console, `put-parameter --overwrite` the SSM param, the next workflow
-  run picks it up. No GitHub-side change.
-- **Rotate Gmail OAuth**: re-grant locally, re-put `gmail-token-json`.
-- **Rotate clasp**: `clasp logout && clasp login`, re-put `clasp-rc-json`.
-- **Audit access**: AWS CloudTrail logs every `ssm:GetParameter` with
-  the role's session name (set by the Action). Filter on
-  `eventSource = ssm.amazonaws.com` + the role name.
+- **Rotate the Claude subscription token** (~annually): `claude setup-token |
+  aws ssm put-parameter --name /cleanup-gmail/claude-code-oauth-token
+  --type SecureString --value file:///dev/stdin --overwrite`.
+- **Rotate the GitHub token**: `put-parameter --overwrite` with a fresh PAT.
+- **Rotate Gmail / Apps Script OAuth**: re-mint and `put-parameter --overwrite`.
+- **Update the refine image**: rebuild from `container/Dockerfile` and push to
+  ECR (`:latest`); the next scheduled run picks it up.
+- **Audit access**: CloudTrail logs every `ssm:GetParameter` with the calling
+  role's session name. Filter on `eventSource = ssm.amazonaws.com` plus the
+  role name to see exactly which component read which secret.

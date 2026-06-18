@@ -1,0 +1,33 @@
+# The refine image bakes in only scripts/ and container/refine-entrypoint.sh
+# (the repo is cloned fresh at runtime). Everything else is build-context noise
+# or sensitive local data and must never enter the image layers.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+node_modules
+
+# Local mailbox data / secrets — never ship in a build context.
+credentials.json
+client_secret*.json
+token*.json
+feedback.json
+feedback_resolved.json
+discover*.json
+classification.json
+unlabeled_messages.json
+proposed_tree*.json
+final_tree_v*.json
+tests/corpus.json
+tests/corpus_disagreements.json
+
+# OS / editor noise
+.DS_Store
+.idea
+.vscode
+*.swp
