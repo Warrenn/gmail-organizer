@@ -453,7 +453,10 @@ Resources:
         CleanupArn: !GetAtt CleanupLambda.Arn
         ClusterArn: !GetAtt EcsCluster.Arn
         TaskDefArn: !Ref RefineTaskDefinition
-        Subnets: !Join [",", !Ref SubnetIds]
+        # Join with '","' so the ASL's surrounding ["${Subnets}"] becomes a
+        # proper JSON array of individual subnet IDs (not one comma-joined
+        # element, which ECS RunTask rejects with "Subnet ID must match ...").
+        Subnets: !Join ['","', !Ref SubnetIds]
       DefinitionString: !Sub |
         {
           "Comment": "Autonomous Gmail feedback loop: scan -> (markers?) -> refine -> deploy -> cleanup",
