@@ -8,7 +8,7 @@ deploy the CloudFormation stack, and (optionally) tear it all down.
 ## Architecture at a glance
 
 ```
-EventBridge Scheduler (every 6h, eu-west-1)
+EventBridge Scheduler (every 6h, af-south-1)
       │
       ▼
 Step Functions: feedback-loop
@@ -53,7 +53,7 @@ transiently in an encrypted S3 bucket and are never committed to the repo.
    the EventBridge schedule, the IAM roles, and the CloudWatch log groups +
    failure alarm.
 
-All steps assume region `eu-west-1` and account ID `<YOUR_ACCOUNT_ID>` —
+All steps assume region `af-south-1` and account ID `<YOUR_ACCOUNT_ID>` —
 substitute your values. The `/cleanup-gmail/` SSM namespace is referenced by the
 stack parameters; keep it (or override `SsmPrefix`).
 
@@ -167,7 +167,7 @@ image (from `container/Dockerfile`), and push it.
 
 ```sh
 ACCOUNT=<YOUR_ACCOUNT_ID>
-REGION=eu-west-1
+REGION=af-south-1
 REPO=gmail-organizer-refine
 
 aws ecr create-repository --repository-name "$REPO" --region "$REGION"
@@ -197,12 +197,12 @@ gateway — no NAT).
 
 ```sh
 aws cloudformation deploy \
-  --region eu-west-1 \
+  --region af-south-1 \
   --stack-name gmail-organizer-loop \
   --template-file infra/feedback-loop.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-      ImageUri="$ACCOUNT.dkr.ecr.eu-west-1.amazonaws.com/gmail-organizer-refine:latest" \
+      ImageUri="$ACCOUNT.dkr.ecr.af-south-1.amazonaws.com/gmail-organizer-refine:latest" \
       AppsScriptId=<APPS_SCRIPT_PROJECT_ID> \
       SubnetIds=subnet-aaaa,subnet-bbbb \
       RepoSlug=Warrenn/gmail-organizer

@@ -22,7 +22,7 @@ Move the autonomous `+X` / `-X` feedback loop off GitHub Actions and onto a **6-
 EventBridge Scheduler fires a Step Functions state machine every 6 hours:
 
 ```
-EventBridge Scheduler (rate: 6 hours, eu-west-1)
+EventBridge Scheduler (rate: 6 hours, af-south-1)
       │
       ▼
 Step Functions: feedback-loop
@@ -114,7 +114,8 @@ Decomposable into ≥2 file-disjoint units (container image, Lambda handlers, Te
 - [x] Step 2 — Lambda handlers: scan + deploy-apps-script + cleanup-markers (Unit B) — completed 2026-06-18 (lambdas/{common,scan,deploy,cleanup}; pytest+moto, 8 tests green)
 - [x] Step 3 — CloudFormation infra (Unit C) — completed 2026-06-18 (infra/feedback-loop.yaml + infra/README.md; cfn-lint clean; aws validate-template pending creds)
 - [x] Step 4 — Docs rewrite + removal of all 3 GitHub Actions workflows (Unit D) — completed 2026-06-18 (aws-bootstrap.md rewrite, README section, 3 workflows deleted)
-- [ ] Step 5 — Serial final pass: SSM param mint/retire, deploy stack, end-to-end test run (USER-GATED — token mint + AWS deploy)
+- [~] Step 5 — IN PROGRESS (2026-06-19). **Region corrected eu-west-1 → af-south-1** (where the secrets live; confirmed by repo var AWS_REGION). Created default VPC `vpc-0a17df1e289ced1af` (3 public subnets, no NAT). Built+pushed ECR image `gmail-organizer-refine:latest`; packaged Lambdas (x86_64/py3.12) → `s3://gmail-organizer-lambda-code-352842384468/lambdas/all.zip`; **deployed stack `gmail-organizer-loop` (CREATE_COMPLETE, 23 resources, ScheduleEnabled=DISABLED)**. StateMachine ARN: `arn:aws:states:af-south-1:352842384468:stateMachine:gmail-organizer-loop-feedback-loop`.
+  REMAINING (user-gated): (1) `claude setup-token` → SSM `/cleanup-gmail/claude-code-oauth-token`; (2) GitHub PAT → SSM `/cleanup-gmail/github-token`; (3) retire SSM `anthropic-api-key`; then (4) enable schedule + one manual `start-execution` end-to-end test against a seeded `+`/`-` marker.
 
 ## Decisions locked
 - D4 fully autonomous auto-merge · D3 CloudFormation · D8 migrate `deploy.yml` into the pipeline · retire SSM `anthropic-api-key`.

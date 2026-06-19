@@ -16,7 +16,7 @@ groups, and an SNS failure alarm.
 ```sh
 cfn-lint infra/feedback-loop.yaml
 aws cloudformation validate-template \
-  --region eu-west-1 --template-body file://infra/feedback-loop.yaml
+  --region af-south-1 --template-body file://infra/feedback-loop.yaml
 ```
 
 `cfn-lint` is the offline gate (run it in CI / pre-commit). `validate-template`
@@ -44,12 +44,12 @@ needs AWS credentials + a region, so run it as part of the deploy.
 
 ```sh
 aws cloudformation deploy \
-  --region eu-west-1 \
+  --region af-south-1 \
   --stack-name gmail-organizer-loop \
   --template-file infra/feedback-loop.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-      ImageUri=<acct>.dkr.ecr.eu-west-1.amazonaws.com/gmail-organizer-refine:latest \
+      ImageUri=<acct>.dkr.ecr.af-south-1.amazonaws.com/gmail-organizer-refine:latest \
       AppsScriptId=<APPS_SCRIPT_PROJECT_ID> \
       SubnetIds=subnet-aaaa,subnet-bbbb
 ```

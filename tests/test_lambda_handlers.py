@@ -17,7 +17,7 @@ import pytest
 moto = pytest.importorskip("moto")
 from moto import mock_aws  # noqa: E402
 
-REGION = "eu-west-1"
+REGION = "af-south-1"
 BUCKET = "test-artifact-bucket"
 
 

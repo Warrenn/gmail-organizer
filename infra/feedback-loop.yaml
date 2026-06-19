@@ -12,7 +12,7 @@ Description: >-
 Parameters:
   ImageUri:
     Type: String
-    Description: ECR image URI for the Fargate refine task (e.g. <acct>.dkr.ecr.eu-west-1.amazonaws.com/gmail-organizer-refine:latest).
+    Description: ECR image URI for the Fargate refine task (e.g. <acct>.dkr.ecr.af-south-1.amazonaws.com/gmail-organizer-refine:latest).
 
   AppsScriptId:
     Type: String
