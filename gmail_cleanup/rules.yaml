@@ -245,9 +245,17 @@ sender_rules:
     labels: [social, linkedin]
 
   # ----- travel -----
+  - id: busbud-sender
+    match: {from_contains: busbud.com}
+    labels: [travel, maliko-bus]
   - id: booking-sender
     match: {from_contains: booking.com}
     labels: [travel, booking]
+
+  # ----- chefconnect -----
+  - id: chefconnect-clendenon-sender
+    match: {from_contains: clendenon.com}
+    labels: [chefconnect, work]
 
   # ----- work -----
   - id: vpm-sender
