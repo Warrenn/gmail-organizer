@@ -248,6 +248,9 @@ sender_rules:
   - id: booking-sender
     match: {from_contains: booking.com}
     labels: [travel, booking]
+  - id: busbud-sender
+    match: {from_contains: busbud.com}
+    labels: [maliko-bus]
 
   # ----- work -----
   - id: vpm-sender
@@ -292,6 +295,9 @@ sender_rules:
   - id: simola-sender
     match: {from_contains: simola.co.za}
     labels: [work, simola]
+  - id: clendenon-chefconnect
+    match: {from_contains: clendenon.com}
+    labels: [chefconnect]
 
 
 # ============================================================================
