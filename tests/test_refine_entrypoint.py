@@ -81,10 +81,15 @@ def stub_bin(tmp_path: Path):
     # and emit a resolved manifest so the upload step has a payload.
     _write_exec(
         bindir / "feedback-loop.sh",
-        f'printf "sub=%s DRY_RUN=%s AUTO_MERGE=%s APIKEY=%s OAUTH_PULLED=%s GH_TOKEN=%s\\n" '
+        f'printf "sub=%s DRY_RUN=%s AUTO_MERGE=%s APIKEY=%s OAUTH_PULLED=%s GH_TOKEN=%s PR_NUMBER=%s\\n" '
         f'"$1" "${{DRY_RUN:-<unset>}}" "${{LOOP_AUTO_MERGE:-<unset>}}" '
         f'"${{ANTHROPIC_API_KEY:-<unset>}}" "${{CLAUDE_OAUTH_VIA_SCRIPT:-script}}" '
-        f'"${{GH_TOKEN:-<unset>}}" >> "{loop_log}"\n'
+        f'"${{GH_TOKEN:-<unset>}}" "${{PR_NUMBER:-<unset>}}" >> "{loop_log}"\n'
+        # The real cmd_refine reports pr_number/branch via $GITHUB_OUTPUT; mimic
+        # that so the entrypoint's refine->verify state bridge can be exercised.
+        'if [ "$1" = "refine" ] && [ -n "${GITHUB_OUTPUT:-}" ]; then\n'
+        '  printf "pr_number=30\\nbranch=loop/test\\n" >> "$GITHUB_OUTPUT"\n'
+        'fi\n'
         'printf "[]\\n" > feedback_resolved.json\n'
         'exit 0\n',
     )
@@ -167,6 +172,20 @@ def test_runs_refine_then_verify_autonomous_and_not_dry(tmp_path, stub_bin):
     for line in loop:
         assert "DRY_RUN=false" in line, line
         assert "AUTO_MERGE=true" in line, line
+
+
+def test_pr_number_bridged_from_refine_to_verify(tmp_path, stub_bin):
+    """refine reports pr_number via $GITHUB_OUTPUT; the entrypoint must lift it
+    into PR_NUMBER for the SEPARATE verify process — otherwise verify dies with
+    'LOOP_AUTO_MERGE=true but PR_NUMBER is empty' (the live-run failure)."""
+    r = _run(stub=stub_bin, cwd=tmp_path)
+    assert r.returncode == 0, r.stderr
+    loop = stub_bin["loop_log"].read_text().splitlines()
+    refine_line = next(l for l in loop if l.startswith("sub=refine"))
+    verify_line = next(l for l in loop if l.startswith("sub=verify"))
+    # refine runs before the PR exists; verify must receive it.
+    assert "PR_NUMBER=<unset>" in refine_line, refine_line
+    assert "PR_NUMBER=30" in verify_line, f"verify must get PR_NUMBER from refine; saw: {verify_line}"
 
 
 def test_uploads_resolved_manifest_to_s3(tmp_path, stub_bin):

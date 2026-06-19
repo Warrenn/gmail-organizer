@@ -103,10 +103,24 @@ export SSM_PREFIX
 export BASE_REF="origin/${REPO_REF}"
 export PYTHON="${PYTHON:-python3}"
 
+# Bridge state from refine -> verify. feedback-loop.sh runs them as SEPARATE
+# processes; in the retired GitHub Actions design these were separate jobs that
+# passed pr_number/branch via $GITHUB_OUTPUT step outputs. Reuse that exact
+# mechanism: point GITHUB_OUTPUT at a temp file (outside the worktree, so it is
+# never caught by git), let refine's set_output write there, then lift the
+# values verify needs (PR_NUMBER, BRANCH_NAME) into the environment. Without
+# this, verify starts with an empty PR_NUMBER and dies on auto-merge.
+export GITHUB_OUTPUT=/tmp/loop-output
+: > "$GITHUB_OUTPUT"
+
 log "Running refine phase"
 "$FEEDBACK_LOOP_SH" refine
 
-log "Running verify phase"
+PR_NUMBER="$(sed -n 's/^pr_number=//p' "$GITHUB_OUTPUT" | tail -1)"
+BRANCH_NAME="$(sed -n 's/^branch=//p' "$GITHUB_OUTPUT" | tail -1)"
+export PR_NUMBER BRANCH_NAME
+
+log "Running verify phase (PR #${PR_NUMBER:-<none>}, branch ${BRANCH_NAME:-<none>})"
 "$FEEDBACK_LOOP_SH" verify
 
 # --- 4. Ship feedback_resolved.json to S3 ----------------------------------
